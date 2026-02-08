@@ -150,38 +150,31 @@ Concrete, prioritized actions. Distinguish between immediate (fix now) and strat
 """
 
 
-SYNTHESIS_SYSTEM_PROMPT = """\
-You are FixAI — an elite on-call debugging AI. \
-You have completed your investigation. All tool results are in the conversation above.
-
-You MUST now write your final report. Do NOT request any tool calls.
-
-## Rules
-- ONLY report what the data shows — never fabricate findings.
-- "No data" = observability gap, NOT a problem.
-- Quantify everything: error counts, latency, request rates.
-- Tool errors (connection failed) = "unavailable", not a finding.
-
-## Report Format
-
-### Summary
-One-paragraph assessment. Be definitive: healthy, degraded, or impaired.
-
-### Metrics
-Dashboard and metric findings with specific numbers. State explicitly if none found.
-
-### Logs
-Log search findings. Quote errors, count occurrences. "No errors in last N minutes" if clean.
-
-### Code Architecture
-Entry points and flows (only if relevant to the issue).
-
-### Root Cause Analysis
-Based on ALL evidence. If inconclusive, state what is missing.
-
-### Recommendations
-Concrete, prioritized actions.
-"""
+SYNTHESIS_REQUEST = (
+    "INVESTIGATION COMPLETE — CALL LIMIT REACHED.\n\n"
+    "You MUST now write your final comprehensive report based on ALL the data collected above. "
+    "Do NOT say 'let me check' or 'let me query'. Do NOT request any tools. "
+    "Synthesize everything you have found into a structured report.\n\n"
+    "## Required Report Format\n\n"
+    "### Summary\n"
+    "One-paragraph definitive assessment: healthy, degraded, or impaired.\n\n"
+    "### Metrics\n"
+    "Dashboard and metric findings with specific numbers. State if none found.\n\n"
+    "### Logs\n"
+    "Log search findings. Quote errors, count occurrences. State if clean.\n\n"
+    "### Code Architecture\n"
+    "Entry points and flows (only if relevant).\n\n"
+    "### Root Cause Analysis\n"
+    "Based on ALL evidence. State what's missing if inconclusive.\n\n"
+    "### Recommendations\n"
+    "Concrete, prioritized actions.\n\n"
+    "IMPORTANT RULES:\n"
+    "- ONLY report what data shows — never fabricate.\n"
+    "- Tool errors (401, connection failed) = 'unavailable', not a finding.\n"
+    "- 'No data' = observability gap, NOT a problem.\n"
+    "- Quantify everything: counts, rates, latencies.\n"
+    "- Write the report NOW. This is your FINAL response."
+)
 
 
 def _build_tool_map() -> dict:
@@ -189,9 +182,8 @@ def _build_tool_map() -> dict:
 
 
 def _build_synthesis_messages(messages: list) -> list:
-    """Replace system prompt(s) with synthesis-only prompt, keep conversation history."""
-    non_system = [m for m in messages if not isinstance(m, SystemMessage)]
-    return [SystemMessage(content=SYNTHESIS_SYSTEM_PROMPT)] + non_system
+    """Keep the original system prompt and conversation, append a synthesis request as HumanMessage."""
+    return list(messages) + [HumanMessage(content=SYNTHESIS_REQUEST)]
 
 
 # ---------- Node functions ----------
@@ -239,6 +231,13 @@ def agent_node(state: AgentState) -> dict:
         synthesis_msgs = _build_synthesis_messages(messages)
         llm = ClaudeBedrockChat()
         response = llm.invoke(synthesis_msgs)
+
+        logger.info(
+            "synthesis_response",
+            content_len=len(response.content or ""),
+            content_preview=(response.content or "")[:120],
+            has_tool_calls=bool(getattr(response, 'tool_calls', None)),
+        )
 
         # Safety: strip any tool calls (shouldn't happen without tools bound)
         if hasattr(response, 'tool_calls') and response.tool_calls:
@@ -417,6 +416,8 @@ async def run_agent(
 
     try:
         final_response = ""
+        last_ai_content = ""          # Content from the LAST on_chat_model_end
+        chain_end_response = ""        # Content from on_chain_end (fallback)
         current_tool_call: dict | None = None
 
         async for event in agent.astream_events(
@@ -453,21 +454,35 @@ async def run_agent(
                     yield ("token", chunk.content)
 
             elif kind == "on_chat_model_end":
-                if capture_full_trace:
-                    output = event_data.get("output", {})
-                    if isinstance(output, AIMessage):
-                        usage = output.additional_kwargs.get("usage", {})
-                        trace_entry = {
+                output = event_data.get("output", {})
+
+                # Extract AIMessage from various output formats
+                ai_msg = None
+                if isinstance(output, AIMessage):
+                    ai_msg = output
+                elif hasattr(output, "generations") and output.generations:
+                    gens = output.generations
+                    if isinstance(gens[0], list) and gens[0]:
+                        ai_msg = getattr(gens[0][0], "message", None)
+                    elif hasattr(gens[0], "message"):
+                        ai_msg = gens[0].message
+
+                if ai_msg and isinstance(ai_msg, AIMessage) and ai_msg.content:
+                    # Always overwrite — the LAST AI response wins (synthesis)
+                    last_ai_content = ai_msg.content
+
+                    if capture_full_trace:
+                        usage = ai_msg.additional_kwargs.get("usage", {})
+                        full_trace.append({
                             "type": "ai_response",
                             "ai_call_number": ai_call_count,
-                            "content_preview": (output.content or "")[:200],
+                            "content_preview": ai_msg.content[:200],
                             "tool_calls": [
                                 {"id": tc.get("id"), "name": tc.get("name"), "args": tc.get("args", {})}
-                                for tc in (output.tool_calls or [])
+                                for tc in (ai_msg.tool_calls or [])
                             ],
                             "usage": usage,
-                        }
-                        full_trace.append(trace_entry)
+                        })
 
             elif kind == "on_tool_start":
                 tool_call_count += 1
@@ -533,7 +548,15 @@ async def run_agent(
                     if msgs:
                         last = msgs[-1] if isinstance(msgs, list) else msgs
                         if isinstance(last, AIMessage) and last.content:
-                            final_response = last.content
+                            chain_end_response = last.content
+
+        # Determine final_response: last AI call content > chain_end > fallback
+        final_response = last_ai_content or chain_end_response
+        logger.info(
+            "final_response_selected",
+            source="on_chat_model_end" if last_ai_content else ("on_chain_end" if chain_end_response else "none"),
+            content_len=len(final_response),
+        )
 
         elapsed_total = round(time.time() - start_time, 1)
 
