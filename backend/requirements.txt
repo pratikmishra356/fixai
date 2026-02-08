@@ -1,0 +1,28 @@
+# Web framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.1.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.30
+asyncpg>=0.29.0
+alembic>=1.13.0
+greenlet>=3.0.0
+
+# LangGraph / LangChain
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# HTTP client
+httpx>=0.27.0
+
+# Validation & settings
+pydantic>=2.10.0
+pydantic-settings>=2.5.0
+
+# Logging
+structlog>=24.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+uuid6>=2024.1.12
