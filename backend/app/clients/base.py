@@ -37,10 +37,21 @@ class BaseServiceClient:
         headers: dict[str, str] | None = None,
     ) -> dict | list:
         """HTTP GET with logging."""
-        logger.debug("http_get", url=f"{self.base_url}{path}", params=params)
-        resp = await self.client.get(path, params=params, headers=headers)
-        resp.raise_for_status()
-        return resp.json()
+        full_url = f"{self.base_url}{path}"
+        logger.debug("http_get", url=full_url, params=params)
+        try:
+            resp = await self.client.get(path, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error("http_get_error", url=full_url, status_code=e.response.status_code, response_text=e.response.text[:500])
+            raise
+        except httpx.RequestError as e:
+            logger.error("http_get_connection_error", url=full_url, error=str(e), error_type=type(e).__name__)
+            raise
+        except Exception as e:
+            logger.error("http_get_unexpected_error", url=full_url, error=str(e), error_type=type(e).__name__)
+            raise
 
     async def _post(
         self,
@@ -50,7 +61,18 @@ class BaseServiceClient:
         headers: dict[str, str] | None = None,
     ) -> dict | list:
         """HTTP POST with logging."""
-        logger.debug("http_post", url=f"{self.base_url}{path}", body_keys=list((json_body or {}).keys()))
-        resp = await self.client.post(path, json=json_body, params=params, headers=headers)
-        resp.raise_for_status()
-        return resp.json()
+        full_url = f"{self.base_url}{path}"
+        logger.info("http_post", url=full_url, body_keys=list((json_body or {}).keys()), headers=list((headers or {}).keys()))
+        try:
+            resp = await self.client.post(path, json=json_body, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error("http_post_error", url=full_url, status_code=e.response.status_code, response_text=e.response.text[:500])
+            raise
+        except httpx.RequestError as e:
+            logger.error("http_post_connection_error", url=full_url, error=str(e), error_type=type(e).__name__)
+            raise
+        except Exception as e:
+            logger.error("http_post_unexpected_error", url=full_url, error=str(e), error_type=type(e).__name__)
+            raise

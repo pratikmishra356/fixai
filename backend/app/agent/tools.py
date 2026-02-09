@@ -13,7 +13,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
+import structlog
 from langchain_core.tools import tool
+
+logger = structlog.get_logger(__name__)
 
 from app.clients.code_parser import CodeParserClient
 from app.clients.metrics_explorer import MetricsExplorerClient
@@ -52,7 +55,9 @@ def _cp() -> CodeParserClient:
 def _me() -> MetricsExplorerClient:
     c = _clients.get("metrics_explorer")
     if not c:
+        logger.error("metrics_explorer_not_configured", available_clients=list(_clients.keys()))
         raise ServiceNotConfiguredError("Metrics Explorer is not configured for this organization")
+    logger.debug("metrics_explorer_client", base_url=c.base_url, org_id=c.org_id)
     return c
 
 
@@ -107,10 +112,9 @@ def _handle_error(e: Exception, service: str) -> str:
 
 @tool
 async def metrics_get_overview() -> str:
-    """Get metrics organization overview including the list of important (used) dashboards.
+    """Get metrics organization overview: providers and important dashboards.
 
-    ALWAYS call this first for metrics investigation.
-    Returns: org name, providers, used_dashboards with titles and IDs.
+    Returns org name, active providers, and used_dashboards (each with db_id and provider_dashboard_id).
     """
     try:
         client = _me()
@@ -173,12 +177,13 @@ async def metrics_search_dashboards(search: str) -> str:
 
 @tool
 async def metrics_explore_dashboard(dashboard_db_id: str, metric_search: str = "") -> str:
-    """Explore a dashboard: list its metrics and template variables.
+    """List metrics and template variables in a dashboard.
 
-    Use the db_id (UUID) from metrics_get_overview or metrics_search_dashboards.
+    Returns available metrics (with names and query expressions) and template variables
+    (with tag_key for use as filter keys in metrics_query).
 
     Args:
-        dashboard_db_id: Database UUID of the dashboard (NOT the provider ID).
+        dashboard_db_id: Database UUID of the dashboard (from metrics_get_overview or metrics_search_dashboards).
         metric_search: Optional wildcard to filter metrics (e.g. 'error*', 'latency').
     """
     try:
@@ -233,10 +238,15 @@ async def metrics_explore_dashboard(dashboard_db_id: str, metric_search: str = "
                     entry["metric_name"] = metric_part
             enriched_metrics.append(entry)
 
+        # Extract usable filter keys from template variables for easy reference
+        filter_keys = [v["tag_key"] for v in var_summary if v.get("tag_key")]
+
+        # Put template_variables and filter_keys first so they survive truncation
         return _safe_json({
+            "template_variables": var_summary,
+            "available_filter_keys": filter_keys or None,
             "total_metrics": metrics_result.get("total_count", len(metrics)),
             "metrics": enriched_metrics,
-            "template_variables": var_summary,
         })
     except Exception as e:
         return _handle_error(e, "Metrics Explorer")
@@ -255,7 +265,7 @@ async def metrics_get_variable_values(
     Args:
         dashboard_db_id: Database UUID of the dashboard.
         variable_name: Variable name (e.g. 'tablename', 'service', 'environment').
-        search: Optional search to narrow high-cardinality variables (e.g. 'prod', 'ccfraud').
+        search: Optional search to narrow high-cardinality variables (e.g. 'prod', 'my-service').
     """
     try:
         result = await _me().get_variable_values(dashboard_db_id, variable_name, search=search)
@@ -282,16 +292,16 @@ async def metrics_query(
     group_by: list[str] | None = None,
     time_range: str = "1h",
 ) -> str:
-    """Execute a metric query against a dashboard.
-
-    Use the provider_dashboard_id (e.g. '4k2-qvg-h38') from dashboard search results.
+    """Execute a metric query and return datapoints.
 
     Args:
         dashboard_provider_id: Provider dashboard ID (e.g. '4k2-qvg-h38'), NOT the database UUID.
-        metric_name: Full metric name (e.g. 'aws.dynamodb.consumed_read_capacity_units').
+        metric_name: Full metric name from metrics_explore_dashboard.
         aggregation: avg, sum, min, max, count, or last.
-        filters: Tag filters dict (e.g. {'service': 'ccfraud', 'environment': 'prod'}). Optional.
-        group_by: Tag keys to group results by (e.g. ['service']). Optional.
+        filters: Tag filters to scope the query. Use the tag_key from the dashboard's
+                 template_variables to filter by service. Without filters, returns
+                 aggregated data across all services.
+        group_by: Tag keys to group results by. Optional.
         time_range: Relative time range: '15m', '1h', '4h', '24h', '7d'. Default '1h'.
     """
     try:
@@ -304,10 +314,27 @@ async def metrics_query(
         if group_by:
             query["group_by"] = group_by
 
+        logger.info(
+            "metrics_query_calling",
+            dashboard_provider_id=dashboard_provider_id,
+            metric_name=metric_name,
+            aggregation=aggregation,
+            filters=filters,
+            time_range=time_range,
+        )
+
         result = await _me().query_metrics(
             dashboard_provider_id=dashboard_provider_id,
             queries=[query],
             time_range={"relative": time_range},
+        )
+
+        logger.info(
+            "metrics_query_result",
+            dashboard_id=result.get("dashboard_id"),
+            total_series=result.get("total_series", 0),
+            total_datapoints=result.get("total_datapoints", 0),
+            results_count=len(result.get("results", [])),
         )
 
         # Compact the response: summarize series
@@ -315,17 +342,27 @@ async def metrics_query(
             "dashboard_id": result.get("dashboard_id"),
             "provider": result.get("provider"),
             "execution_time_ms": result.get("execution_time_ms"),
-            "total_series": result.get("total_series"),
-            "total_datapoints": result.get("total_datapoints"),
+            "total_series": result.get("total_series", 0),
+            "total_datapoints": result.get("total_datapoints", 0),
         }
 
-        for r in result.get("results", []):
+        results = result.get("results", [])
+        if not results:
+            output["note"] = "Query executed successfully but returned no results. This may mean: (1) no data exists for this metric/filter combination, (2) the metric name is incorrect, or (3) the filters exclude all data."
+            return _safe_json(output)
+
+        for r in results:
             output["expression"] = r.get("expression")
             series_summary = []
-            for s in r.get("series", []):
+            series_list = r.get("series", [])
+            if not series_list:
+                output["note"] = "Query returned expression but no series data. This typically means the metric exists but has no data points for the specified time range or filters."
+                continue
+
+            for s in series_list:
                 datapoints = s.get("datapoints", [])
                 values = [dp["value"] for dp in datapoints if dp.get("value") is not None]
-                summary = {
+                summary: dict[str, Any] = {
                     "scope": s.get("scope"),
                     "tags": s.get("tags"),
                     "unit": s.get("unit"),
@@ -348,6 +385,7 @@ async def metrics_query(
 
         return _safe_json(output)
     except Exception as e:
+        logger.error("metrics_query_error", error=str(e), error_type=type(e).__name__, dashboard_provider_id=dashboard_provider_id, metric_name=metric_name)
         return _handle_error(e, "Metrics Explorer")
 
 
@@ -357,10 +395,9 @@ async def metrics_query(
 
 @tool
 async def logs_get_overview() -> str:
-    """Get logs organization overview including used (important) indexes.
+    """Get logs organization overview: used indexes and source/application counts.
 
-    ALWAYS call this first for logs investigation.
-    Returns: org name, used_indexes, total index/source/application counts.
+    Returns org name, used_indexes, and counts of available indexes, sources, and applications.
     """
     try:
         org = await _le().get_organization()
@@ -383,7 +420,7 @@ async def logs_search_sources(search: str, repository_id: str | None = None) -> 
     Space-separated terms = OR search. Supports * wildcard.
 
     Args:
-        search: Search pattern (e.g. 'ccfraud', 'payment*fraud', 'payment fraud').
+        search: Search pattern (e.g. 'my-service', 'auth*', 'payment gateway').
         repository_id: Optional index/repo ID to scope the search.
     """
     try:
@@ -470,19 +507,71 @@ async def logs_search(
 
 
 # ============================================================================
-# CODE PARSER TOOLS (4)
+# CODE PARSER TOOLS (6)
 # ============================================================================
 
 @tool
-async def code_search_entry_points(search: str = "", entry_point_type: str | None = None) -> str:
+async def code_search_repositories(search: str = "") -> str:
+    """List repositories in this organization, optionally filtered by regex.
+
+    Returns repo id, name, description, languages, and file count.
+    Use the returned 'id' as repo_id in other code tools.
+
+    Args:
+        search: Regex pattern to match repo name/description. Empty string = list all repos.
+    """
+    try:
+        repos = await _cp().list_repositories(search=search, limit=50)
+        if isinstance(repos, list):
+            return _safe_json({
+                "total_count": len(repos),
+                "repositories": _compact_list(
+                    repos,
+                    ["id", "name", "description", "languages", "total_files", "status"],
+                    max_items=20,
+                ),
+            })
+        return _safe_json(repos)
+    except Exception as e:
+        return _handle_error(e, "Code Parser")
+
+
+@tool
+async def code_get_repo_info(repo_id: str | None = None) -> str:
+    """Get repository metadata: name, description, languages, file count.
+
+    Args:
+        repo_id: Repository ID (from code_search_repositories). Omit to use the default repo.
+    """
+    try:
+        repo = await _cp().get_repository(repo_id=repo_id)
+        return _safe_json({
+            "repo_id": repo.get("id"),
+            "name": repo.get("name"),
+            "description": repo.get("description"),
+            "languages": repo.get("languages"),
+            "total_files": repo.get("total_files"),
+            "status": repo.get("status"),
+        })
+    except Exception as e:
+        return _handle_error(e, "Code Parser")
+
+
+@tool
+async def code_search_entry_points(
+    search: str = "",
+    entry_point_type: str | None = None,
+    repo_id: str | None = None,
+) -> str:
     """Search entry points (HTTP endpoints, event handlers, schedulers) by regex.
 
     Args:
         search: Regex pattern to match entry point name/description (e.g. 'fraud', 'payment|transaction', 'POST.*risk').
         entry_point_type: Filter by type: 'HTTP', 'EVENT', 'SCHEDULER'. None for all.
+        repo_id: Repository ID from code_search_repositories. If omitted, uses the default configured repo.
     """
     try:
-        results = await _cp().search_entry_points(search=search, limit=100)
+        results = await _cp().search_entry_points(search=search, limit=100, repo_id=repo_id)
 
         # Filter by type if specified
         if entry_point_type and isinstance(results, list):
@@ -503,7 +592,7 @@ async def code_search_entry_points(search: str = "", entry_point_type: str | Non
 
 
 @tool
-async def code_get_flows(entry_point_ids: list[str]) -> str:
+async def code_get_flows(entry_point_ids: list[str], repo_id: str | None = None) -> str:
     """Get detailed execution flow documentation for entry points.
 
     Shows step-by-step what happens when an endpoint is called, including
@@ -511,24 +600,26 @@ async def code_get_flows(entry_point_ids: list[str]) -> str:
 
     Args:
         entry_point_ids: List of entry point IDs (from code_search_entry_points). Max 5.
+        repo_id: Repository ID from code_search_repositories. If omitted, uses the default configured repo.
     """
     try:
         ids = entry_point_ids[:5]  # Cap at 5
-        result = await _cp().get_flows(ids)
-        return _safe_json(result, max_len=settings.agent_tool_response_max_chars)  # Flows can be large but are highly valuable
+        result = await _cp().get_flows(ids, repo_id=repo_id)
+        return _safe_json(result, max_len=settings.agent_tool_response_max_chars)
     except Exception as e:
         return _handle_error(e, "Code Parser")
 
 
 @tool
-async def code_search_files(search: str) -> str:
+async def code_search_files(search: str, repo_id: str | None = None) -> str:
     """Search source code files by regex on file path.
 
     Args:
         search: Regex pattern matching file relative_path (e.g. 'controller|handler', 'FraudService', '\\.py$', 'src/main/.*Service').
+        repo_id: Repository ID from code_search_repositories. If omitted, uses the default configured repo.
     """
     try:
-        results = await _cp().search_files(search=search, limit=50)
+        results = await _cp().search_files(search=search, limit=50, repo_id=repo_id)
         if isinstance(results, list):
             return _safe_json({
                 "total_count": len(results),
@@ -544,16 +635,17 @@ async def code_search_files(search: str) -> str:
 
 
 @tool
-async def code_get_file(file_id: str) -> str:
+async def code_get_file(file_id: str, repo_id: str | None = None) -> str:
     """Read the full source code of a specific file.
 
     Use after finding the file via code_search_files or from flow documentation.
 
     Args:
         file_id: File ID (from code_search_files or flow file_paths).
+        repo_id: Repository ID from code_search_repositories. If omitted, uses the default configured repo.
     """
     try:
-        result = await _cp().get_file_detail(file_id)
+        result = await _cp().get_file_detail(file_id, repo_id=repo_id)
         return _safe_json(result, max_len=settings.agent_tool_response_max_chars)
     except Exception as e:
         return _handle_error(e, "Code Parser")
@@ -571,7 +663,9 @@ ALL_TOOLS = [
     logs_get_overview,
     logs_search_sources,
     logs_search,
-    # Code Parser (4)
+    # Code Parser (6)
+    code_search_repositories,
+    code_get_repo_info,
     code_search_entry_points,
     code_get_flows,
     code_search_files,
