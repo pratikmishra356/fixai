@@ -27,18 +27,14 @@ class Settings(BaseSettings):
         alias="LOGS_EXPLORER_BASE_URL",
     )
 
-    # Claude / LLM
+    # Claude / LLM (set via env vars or CodeCircle AI Settings)
     claude_bedrock_url: str = Field(
-        default="https://llm-proxy.build.eng.toasttab.com",
+        default="",
         alias="CLAUDE_BEDROCK_URL",
     )
     claude_model_id: str = Field(
-        default="global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        default="",
         alias="CLAUDE_MODEL_ID",
-    )
-    claude_api_key_helper_path: str = Field(
-        default="/opt/homebrew/bin/toastApiKeyHelper",
-        alias="CLAUDE_API_KEY_HELPER_PATH",
     )
     claude_api_key: str = Field(
         default="",

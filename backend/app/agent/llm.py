@@ -5,7 +5,6 @@ tool-calling support for the agent loop.
 """
 
 import json
-import subprocess
 from typing import Any, Iterator, List, Optional
 
 import httpx
@@ -28,22 +27,15 @@ logger = structlog.get_logger(__name__)
 
 
 def _get_api_key(override: str | None = None) -> str:
-    """Get API key – org override > env var > helper binary."""
+    """Get API key – org override > env var."""
     if override:
         return override
     if settings.claude_api_key:
         return settings.claude_api_key
-    try:
-        result = subprocess.run(
-            [settings.claude_api_key_helper_path],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.stdout.strip()
-    except Exception as exc:
-        logger.error("api_key_helper_failed", error=str(exc))
-        raise RuntimeError("Cannot obtain Claude API key") from exc
+    raise RuntimeError(
+        "Cannot obtain Claude API key. "
+        "Configure AI settings in the CodeCircle dashboard or set CLAUDE_API_KEY env var."
+    )
 
 
 def _langchain_to_anthropic_messages(

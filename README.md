@@ -67,10 +67,9 @@ All configuration via environment variables (see `backend/.env.example`):
 | `CODE_PARSER_BASE_URL` | `http://localhost:8000` | Code Parser service URL |
 | `METRICS_EXPLORER_BASE_URL` | `http://localhost:8000` | Metrics Explorer service URL |
 | `LOGS_EXPLORER_BASE_URL` | `http://localhost:8003` | Logs Explorer service URL |
-| `CLAUDE_BEDROCK_URL` | `https://llm-proxy...` | Claude Bedrock proxy URL |
-| `CLAUDE_MODEL_ID` | `global.anthropic.claude-sonnet-4-5-20250929-v1:0` | Claude model |
-| `CLAUDE_API_KEY` | (empty) | Direct API key (overrides helper) |
-| `CLAUDE_API_KEY_HELPER_PATH` | `/opt/homebrew/bin/toastApiKeyHelper` | API key helper binary |
+| `CLAUDE_BEDROCK_URL` | (empty) | Claude Bedrock proxy URL (set via CodeCircle AI Settings) |
+| `CLAUDE_MODEL_ID` | (empty) | Claude model ID (set via CodeCircle AI Settings) |
+| `CLAUDE_API_KEY` | (empty) | API key (set via CodeCircle AI Settings or env var) |
 
 ## Organization Setup
 
