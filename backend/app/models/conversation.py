@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import relationship
 
@@ -21,6 +21,10 @@ class Conversation(Base):
         index=True,
     )
     title = Column(String(512), nullable=False, default="New Conversation")
+    # Rolling summary for long conversations: when history exceeds threshold we summarize
+    # older messages and pass summary + last 2 exchanges to the agent
+    conversation_summary = Column(Text, nullable=True)
+    conversation_summary_message_count = Column(Integer, nullable=True)
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

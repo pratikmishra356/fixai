@@ -1,5 +1,6 @@
 """Chat API routes with SSE streaming and full debug capture."""
 
+import asyncio
 import json
 import uuid as _uuid
 from uuid import UUID
@@ -7,7 +8,7 @@ from uuid import UUID
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,8 +24,14 @@ from app.schemas.chat import (
     MessageResponse,
 )
 from app.agent.graph import run_agent
+from app.agent.summarize import summarize_conversation
 
 logger = structlog.get_logger(__name__)
+
+# When conversation has at least this many messages (including the new one), we use
+# summarization: summarize older messages and pass summary + last 2 exchanges only.
+RECENT_MESSAGE_COUNT = 4  # last 2 user + 2 assistant before the new user message
+MIN_MESSAGES_FOR_SUMMARY = 6  # need at least 6 messages to have something to summarize
 
 router = APIRouter(tags=["chat"])
 
@@ -48,6 +55,65 @@ async def _get_conversation(db: AsyncSession, conversation_id: UUID) -> Conversa
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return conv
+
+
+def _message_to_langchain(m: Message):
+    if m.role == "user":
+        return HumanMessage(content=m.content or "")
+    if m.role == "assistant":
+        return AIMessage(content=m.content or "")
+    return None
+
+
+async def _build_conversation_history(conv: Conversation, new_user_content: str):
+    """
+    Build conversation_history for the agent. When the chat is large we summarize
+    older messages and pass summary + last 2 exchanges. Otherwise pass full history.
+    The new user message is NOT included in history; it is passed separately as user_message.
+    """
+    all_messages = list(conv.messages)
+    # Exclude the new user message (last one we just added in send_message)
+    existing = all_messages[:-1] if all_messages else []
+
+    if len(existing) < MIN_MESSAGES_FOR_SUMMARY:
+        # Small chat: pass full history (user + assistant only, no tool messages in stored history)
+        history = []
+        for m in existing:
+            msg = _message_to_langchain(m)
+            if msg is not None:
+                history.append(msg)
+        return history
+
+    # Large chat: summarize older part, keep last 2 exchanges
+    to_summarize = existing[:-RECENT_MESSAGE_COUNT]
+    recent = existing[-RECENT_MESSAGE_COUNT:]
+    if not to_summarize:
+        history = []
+        for m in recent:
+            msg = _message_to_langchain(m)
+            if msg is not None:
+                history.append(msg)
+        return history
+
+    need_summary = (
+        conv.conversation_summary is None
+        or conv.conversation_summary_message_count is None
+        or conv.conversation_summary_message_count < len(to_summarize)
+    )
+    if need_summary:
+        summary_text = await asyncio.to_thread(summarize_conversation, to_summarize)
+        conv.conversation_summary = summary_text
+        conv.conversation_summary_message_count = len(to_summarize)
+
+    summary_msg = SystemMessage(
+        content=f"Previous conversation summary:\n{conv.conversation_summary}"
+    )
+    history = [summary_msg]
+    for m in recent:
+        msg = _message_to_langchain(m)
+        if msg is not None:
+            history.append(msg)
+    return history
 
 
 # ---------- Conversation CRUD ----------
@@ -254,13 +320,8 @@ async def send_message(
     db.add(user_msg)
     await db.flush()
 
-    # Build conversation history from DB messages
-    history = []
-    for m in conv.messages:
-        if m.role == "user":
-            history.append(HumanMessage(content=m.content))
-        elif m.role == "assistant":
-            history.append(AIMessage(content=m.content))
+    # Build conversation history: full history if small, else summary + last 2 exchanges
+    history = await _build_conversation_history(conv, body.content)
 
     # Context from user
     context = body.context.model_dump(exclude_none=True) if body.context else None
@@ -269,7 +330,7 @@ async def send_message(
     if len(conv.messages) <= 1:
         conv.title = body.content[:80] + ("..." if len(body.content) > 80 else "")
 
-    # Commit the user message before streaming
+    # Commit (including any updated conversation_summary) before streaming
     await db.commit()
 
     async def event_stream():
