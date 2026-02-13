@@ -228,10 +228,21 @@ def agent_node(state: AgentState) -> dict:
         token_est > MAX_INPUT_TOKENS
     )
 
+    # --- Build LLM with org-level overrides ---
+    llm_kwargs: dict = {}
+    if state.get("ai_model_id"):
+        llm_kwargs["model_id"] = state["ai_model_id"]
+    if state.get("ai_bedrock_url"):
+        llm_kwargs["bedrock_url"] = state["ai_bedrock_url"]
+    if state.get("ai_max_tokens"):
+        llm_kwargs["max_tokens"] = state["ai_max_tokens"]
+    if state.get("ai_api_key"):
+        llm_kwargs["api_key_override"] = state["ai_api_key"]
+
     if force_synthesis:
         logger.info("forcing_synthesis", call_count=call_count, max_calls=MAX_AI_CALLS, token_est=token_est)
         synthesis_msgs = _build_synthesis_messages(messages)
-        llm = ClaudeBedrockChat()
+        llm = ClaudeBedrockChat(**llm_kwargs)
         response = llm.invoke(synthesis_msgs)
 
         logger.info(
@@ -256,7 +267,7 @@ def agent_node(state: AgentState) -> dict:
         }
 
     # --- Normal AI call (tools bound) ---
-    llm = ClaudeBedrockChat()
+    llm = ClaudeBedrockChat(**llm_kwargs)
     llm_with_tools = llm.bind_tools(ALL_TOOLS)
     response = llm_with_tools.invoke(messages)
 
@@ -419,8 +430,19 @@ async def run_agent(
         chain_end_response = ""        # Content from on_chain_end (fallback)
         current_tool_call: dict | None = None
 
+        # Populate org-level AI config into state (fall back to global settings)
+        initial_state = {
+            "messages": messages,
+            "ai_call_count": 0,
+            "total_input_tokens_est": 0,
+            "ai_api_key": organization.claude_api_key or "",
+            "ai_bedrock_url": organization.claude_bedrock_url or "",
+            "ai_model_id": organization.claude_model_id or "",
+            "ai_max_tokens": organization.claude_max_tokens or 0,
+        }
+
         async for event in agent.astream_events(
-            {"messages": messages, "ai_call_count": 0, "total_input_tokens_est": 0},
+            initial_state,
             {"recursion_limit": RECURSION_LIMIT},
             version="v2",
         ):

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -32,6 +32,12 @@ class Organization(Base):
     # --- Logs Explorer service mapping ---
     logs_explorer_base_url = Column(String(512), nullable=True)
     logs_explorer_org_id = Column(UUID(as_uuid=True), nullable=True)
+
+    # --- AI / LLM configuration (pushed from CodeCircle platform) ---
+    claude_api_key = Column(Text, nullable=True)
+    claude_bedrock_url = Column(String(512), nullable=True)
+    claude_model_id = Column(String(200), nullable=True)
+    claude_max_tokens = Column(Integer, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),

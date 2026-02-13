@@ -27,8 +27,10 @@ from app.config import settings
 logger = structlog.get_logger(__name__)
 
 
-def _get_api_key() -> str:
-    """Get API key – direct env var takes precedence over helper binary."""
+def _get_api_key(override: str | None = None) -> str:
+    """Get API key – org override > env var > helper binary."""
+    if override:
+        return override
     if settings.claude_api_key:
         return settings.claude_api_key
     try:
@@ -107,6 +109,7 @@ class ClaudeBedrockChat(BaseChatModel):
     model_id: str = Field(default_factory=lambda: settings.claude_model_id)
     bedrock_url: str = Field(default_factory=lambda: settings.claude_bedrock_url)
     max_tokens: int = Field(default_factory=lambda: settings.claude_max_tokens)
+    api_key_override: str | None = None
     temperature: float = 0.0
 
     # Bind tools when agent is constructed
@@ -152,7 +155,7 @@ class ClaudeBedrockChat(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         """Call Claude synchronously (LangGraph uses this internally)."""
-        api_key = _get_api_key()
+        api_key = _get_api_key(self.api_key_override)
         system_prompt, anthropic_msgs = _langchain_to_anthropic_messages(messages)
 
         body: dict[str, Any] = {

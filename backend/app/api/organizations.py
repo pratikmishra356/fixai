@@ -3,19 +3,27 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.organization import Organization
-from app.models.conversation import Conversation
 from app.schemas.organization import (
+    AIConfigUpdate,
     OrganizationCreate,
     OrganizationResponse,
     OrganizationUpdate,
 )
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
+
+
+def _org_response(org: Organization) -> OrganizationResponse:
+    """Build response, masking the API key."""
+    data = {c.name: getattr(org, c.name) for c in org.__table__.columns}
+    data["claude_api_key_set"] = bool(org.claude_api_key)
+    data.pop("claude_api_key", None)
+    return OrganizationResponse(**data)
 
 
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
@@ -38,7 +46,7 @@ async def create_organization(
     db.add(org)
     await db.flush()
     await db.refresh(org)
-    return org
+    return _org_response(org)
 
 
 @router.get("", response_model=list[OrganizationResponse])
@@ -55,7 +63,7 @@ async def list_organizations(
         .limit(limit)
         .offset(offset)
     )
-    return result.scalars().all()
+    return [_org_response(org) for org in result.scalars().all()]
 
 
 @router.get("/{org_id}", response_model=OrganizationResponse)
@@ -67,7 +75,7 @@ async def get_organization(
     org = await db.get(Organization, org_id)
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
-    return org
+    return _org_response(org)
 
 
 @router.patch("/{org_id}", response_model=OrganizationResponse)
@@ -87,7 +95,27 @@ async def update_organization(
 
     await db.flush()
     await db.refresh(org)
-    return org
+    return _org_response(org)
+
+
+@router.put("/{org_id}/ai-config", response_model=OrganizationResponse)
+async def update_ai_config(
+    org_id: UUID,
+    body: AIConfigUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Update AI/LLM configuration for an organization (called by CodeCircle platform)."""
+    org = await db.get(Organization, org_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    update_data = body.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(org, key, value)
+
+    await db.flush()
+    await db.refresh(org)
+    return _org_response(org)
 
 
 @router.delete("/{org_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -44,6 +44,20 @@ class OrganizationUpdate(BaseModel):
     logs_explorer_base_url: str | None = None
     logs_explorer_org_id: UUID | None = None
 
+    # AI / LLM config
+    claude_api_key: str | None = None
+    claude_bedrock_url: str | None = None
+    claude_model_id: str | None = None
+    claude_max_tokens: int | None = None
+
+
+class AIConfigUpdate(BaseModel):
+    """Dedicated request to update AI config on an org."""
+    claude_api_key: str | None = None
+    claude_bedrock_url: str | None = None
+    claude_model_id: str | None = None
+    claude_max_tokens: int | None = None
+
 
 class OrganizationResponse(BaseModel):
     """Organization response."""
@@ -62,6 +76,12 @@ class OrganizationResponse(BaseModel):
 
     logs_explorer_base_url: str | None = None
     logs_explorer_org_id: UUID | None = None
+
+    # AI config
+    claude_api_key_set: bool = False
+    claude_bedrock_url: str | None = None
+    claude_model_id: str | None = None
+    claude_max_tokens: int | None = None
 
     created_at: datetime
     updated_at: datetime
