@@ -7,53 +7,54 @@
     @apply border-surface-border;
   }
 
+  html,
   body {
-    @apply bg-surface text-gray-100;
+    background-color: #f8fafc;
+    color: #1e293b;
   }
 
-  /* Custom scrollbar */
+  body {
+    @apply antialiased;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-transparent;
+    @apply bg-surface-overlay rounded-full;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-surface-border rounded-full;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-600;
+    @apply bg-slate-300 rounded-full hover:bg-slate-400;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg
-           font-medium text-sm transition-colors duration-150
-           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2
+    @apply px-4 py-2.5 bg-brand-500 hover:bg-brand-600 text-white rounded-lg
+           font-medium text-sm transition-colors duration-150 shadow-soft
+           focus:outline-none focus:ring-2 focus:ring-brand-400 focus:ring-offset-2
            focus:ring-offset-surface disabled:opacity-50 disabled:cursor-not-allowed;
   }
 
   .btn-ghost {
-    @apply px-3 py-2 text-gray-400 hover:text-gray-200 hover:bg-surface-overlay
+    @apply px-3 py-2 text-gray-600 hover:text-gray-800 hover:bg-surface-overlay
            rounded-lg text-sm transition-colors duration-150;
   }
 
   .input-field {
-    @apply w-full px-3 py-2 bg-surface-raised border border-surface-border rounded-lg
-           text-gray-100 placeholder-gray-500 text-sm
-           focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
+    @apply w-full px-3 py-2.5 bg-white border border-surface-border rounded-lg
+           text-gray-800 placeholder-gray-400 text-sm
+           focus:outline-none focus:ring-2 focus:ring-brand-400/50 focus:border-brand-400
            transition-colors duration-150;
   }
 }
 
-/* Markdown code blocks */
+/* Markdown in messages */
 .markdown-body pre {
-  @apply bg-surface-raised rounded-lg p-4 overflow-x-auto my-3 border border-surface-border;
+  @apply bg-slate-100 rounded-lg p-4 overflow-x-auto my-3 border border-surface-border text-gray-800;
 }
 
 .markdown-body code {
@@ -61,11 +62,11 @@
 }
 
 .markdown-body p code {
-  @apply bg-surface-raised px-1.5 py-0.5 rounded text-brand-300;
+  @apply bg-slate-100 px-1.5 py-0.5 rounded text-brand-700;
 }
 
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
-  @apply font-semibold text-gray-100 mt-4 mb-2;
+  @apply font-semibold text-gray-800 mt-4 mb-2;
 }
 
 .markdown-body h1 { @apply text-xl; }
@@ -84,7 +85,7 @@
 }
 
 .markdown-body blockquote {
-  @apply border-l-4 border-brand-500 pl-4 my-3 text-gray-400 italic;
+  @apply border-l-4 border-brand-400 pl-4 my-3 text-gray-600 italic;
 }
 
 .markdown-body table {
@@ -96,11 +97,11 @@
 }
 
 .markdown-body th {
-  @apply bg-surface-raised font-medium;
+  @apply bg-surface-overlay font-medium text-gray-800;
 }
 
 .markdown-body a {
-  @apply text-brand-400 hover:text-brand-300 underline;
+  @apply text-brand-600 hover:text-brand-700 underline;
 }
 
 .markdown-body p {

@@ -108,10 +108,10 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-400">
+      <div className="h-screen flex items-center justify-center bg-surface">
+        <div className="flex items-center gap-3 text-gray-600">
           <Zap className="w-6 h-6 animate-pulse text-brand-500" />
-          <span className="text-lg">Loading FixAI...</span>
+          <span className="text-lg font-medium">Loading FixAI...</span>
         </div>
       </div>
     );
@@ -127,7 +127,7 @@ export default function App() {
         <Route
           path="*"
           element={
-            <div className="h-screen flex overflow-hidden">
+            <div className="h-screen flex overflow-hidden bg-[#f8fafc]">
               <Sidebar
                 organizations={organizations}
                 selectedOrg={selectedOrg}
@@ -177,17 +177,17 @@ export default function App() {
 
 function EmptyState({ onNewConversation }: { onNewConversation: () => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center max-w-md">
-        <div className="w-16 h-16 rounded-2xl bg-brand-600/20 flex items-center justify-center mx-auto mb-6">
-          <Zap className="w-8 h-8 text-brand-400" />
+    <div className="flex-1 flex items-center justify-center bg-surface">
+      <div className="text-center max-w-md px-6">
+        <div className="w-20 h-20 rounded-2xl bg-brand-100 flex items-center justify-center mx-auto mb-6 shadow-soft">
+          <Zap className="w-10 h-10 text-brand-600" />
         </div>
-        <h2 className="text-2xl font-semibold text-gray-100 mb-3">Start debugging</h2>
-        <p className="text-gray-400 mb-8 leading-relaxed">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-3">Start debugging</h2>
+        <p className="text-gray-600 mb-8 leading-relaxed">
           Ask FixAI to investigate production issues. It will search code, metrics,
           and logs to help you find the root cause.
         </p>
-        <button onClick={onNewConversation} className="btn-primary text-base px-6 py-3">
+        <button onClick={onNewConversation} className="btn-primary text-base px-6 py-3 rounded-xl">
           New Conversation
         </button>
       </div>
@@ -197,17 +197,17 @@ function EmptyState({ onNewConversation }: { onNewConversation: () => void }) {
 
 function SetupPrompt({ onSetup }: { onSetup: () => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="text-center max-w-md">
-        <div className="w-16 h-16 rounded-2xl bg-surface-overlay flex items-center justify-center mx-auto mb-6">
-          <Settings className="w-8 h-8 text-gray-500" />
+    <div className="flex-1 flex items-center justify-center bg-surface">
+      <div className="text-center max-w-md px-6">
+        <div className="w-20 h-20 rounded-2xl bg-surface-overlay flex items-center justify-center mx-auto mb-6 shadow-soft">
+          <Settings className="w-10 h-10 text-gray-500" />
         </div>
-        <h2 className="text-2xl font-semibold text-gray-100 mb-3">Set up your organization</h2>
-        <p className="text-gray-400 mb-8 leading-relaxed">
+        <h2 className="text-2xl font-semibold text-gray-800 mb-3">Set up your organization</h2>
+        <p className="text-gray-600 mb-8 leading-relaxed">
           Configure your organization and connect it to your code parser,
           metrics explorer, and logs explorer services.
         </p>
-        <button onClick={onSetup} className="btn-primary text-base px-6 py-3">
+        <button onClick={onSetup} className="btn-primary text-base px-6 py-3 rounded-xl">
           Create Organization
         </button>
       </div>

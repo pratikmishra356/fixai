@@ -157,33 +157,32 @@ export function ChatInterface({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-full bg-surface">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-surface-border bg-surface-raised/50">
+      <header className="flex items-center justify-between px-6 py-3.5 border-b border-surface-border bg-white shadow-card">
         <div>
-          <h1 className="text-sm font-medium text-gray-200 truncate max-w-xl">
+          <h1 className="text-sm font-semibold text-gray-800 truncate max-w-xl">
             {conversation.title}
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">{organization.name}</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Stats badge */}
           {agentStats && (
-            <div className="flex items-center gap-3 text-xs text-gray-500 bg-surface-overlay px-3 py-1.5 rounded-lg">
+            <div className="flex items-center gap-3 text-xs text-gray-600 bg-surface-overlay px-3 py-2 rounded-xl border border-surface-border">
               <span className="flex items-center gap-1" title="AI calls">
-                <Cpu className="w-3 h-3" />
+                <Cpu className="w-3 h-3 text-brand-500" />
                 {agentStats.ai_calls}/{agentStats.max_ai_calls}
               </span>
               <span className="flex items-center gap-1" title="Tool calls">
-                <Activity className="w-3 h-3" />
+                <Activity className="w-3 h-3 text-brand-500" />
                 {agentStats.tool_calls}
               </span>
               <span className="flex items-center gap-1" title="Estimated tokens">
-                <Gauge className="w-3 h-3" />
+                <Gauge className="w-3 h-3 text-brand-500" />
                 {Math.round(agentStats.estimated_tokens / 1000)}k/{agentStats.max_tokens / 1000}k
               </span>
               <span className="flex items-center gap-1" title="Elapsed time">
-                <Clock className="w-3 h-3" />
+                <Clock className="w-3 h-3 text-brand-500" />
                 {agentStats.elapsed_seconds}s
               </span>
             </div>
@@ -191,7 +190,7 @@ export function ChatInterface({
           {conversation.messages.length > 0 && (
             <Link
               to={`/debug/${conversation.id}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-gray-400 hover:text-brand-400 bg-surface-overlay hover:bg-brand-600/10 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 hover:text-brand-600 bg-surface-overlay hover:bg-brand-50 rounded-xl border border-surface-border transition-colors"
               title="View debug trace"
             >
               <Bug className="w-3.5 h-3.5" />
@@ -202,12 +201,13 @@ export function ChatInterface({
       </header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
+      <div className="flex-1 overflow-y-auto px-6 py-6 max-w-4xl mx-auto w-full">
         {conversation.messages.length === 0 && !isStreaming && (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-full min-h-[200px]">
             <p className="text-gray-500 text-sm">Describe the issue you're investigating</p>
           </div>
         )}
+        <div className="space-y-6">
 
         {conversation.messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
@@ -216,16 +216,14 @@ export function ChatInterface({
         {/* Streaming */}
         {isStreaming && (
           <>
-            {/* Tool steps */}
             {toolSteps.length > 0 && (
-              <div className="mb-3 ml-11 space-y-1">
+              <div className="space-y-2">
                 {toolSteps.map((step, i) => (
                   <ToolStepRow key={step.id || i} step={step} />
                 ))}
               </div>
             )}
 
-            {/* Streaming text */}
             {streamingContent && (
               <MessageBubble
                 message={{
@@ -242,8 +240,8 @@ export function ChatInterface({
             )}
 
             {!streamingContent && toolSteps.some((t) => t.status === 'running') && (
-              <div className="flex items-center gap-2 text-gray-500 text-sm ml-11 py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="flex items-center gap-2 text-gray-500 text-sm py-3">
+                <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
                 <span>Investigating...</span>
               </div>
             )}
@@ -251,33 +249,33 @@ export function ChatInterface({
         )}
 
         {error && (
-          <div className="flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+          <div className="flex items-center gap-2 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
             <span>{error}</span>
-            <button onClick={() => setError(null)} className="ml-auto">
+            <button onClick={() => setError(null)} className="ml-auto hover:text-red-700">
               <X className="w-4 h-4" />
             </button>
           </div>
         )}
 
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Context form */}
       {showContext && (
-        <div className="border-t border-surface-border bg-surface-raised/50 px-6 py-3">
+        <div className="border-t border-surface-border bg-white px-6 py-3 shadow-card">
           <ContextForm context={context} onChange={setContext} onClose={() => setShowContext(false)} />
         </div>
       )}
 
       {/* Input */}
-      <div className="border-t border-surface-border px-6 py-4 bg-surface-raised/30">
-        <div className="flex items-end gap-3">
+      <div className="border-t border-surface-border px-6 py-4 bg-white">
+        <div className="flex items-end gap-3 max-w-4xl mx-auto w-full">
           <button
             onClick={() => setShowContext(!showContext)}
-            className={`p-2.5 rounded-lg transition-colors flex-shrink-0 ${
+            className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
               showContext || hasContext(context)
-                ? 'bg-brand-600/20 text-brand-400'
-                : 'text-gray-500 hover:text-gray-300 hover:bg-surface-overlay'
+                ? 'bg-brand-100 text-brand-600'
+                : 'text-gray-500 hover:text-gray-700 hover:bg-surface-overlay'
             }`}
             title="Add context (service, environment, file path)"
           >
@@ -313,11 +311,10 @@ export function ChatInterface({
         </div>
 
         {hasContext(context) && !showContext && (
-          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-            <SlidersHorizontal className="w-3 h-3" />
+          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 max-w-4xl mx-auto w-full">
+            <SlidersHorizontal className="w-3 h-3 text-brand-500" />
             <span>
-              Context:{' '}
-              {[context.service, context.environment, context.file_path].filter(Boolean).join(' · ')}
+              Context: {[context.service, context.environment, context.file_path].filter(Boolean).join(' · ')}
             </span>
           </div>
         )}
@@ -333,47 +330,45 @@ function ToolStepRow({ step }: { step: ToolStep }) {
 
   return (
     <div
-      className={`border rounded-lg transition-colors ${
+      className={`border rounded-xl transition-colors ${
         step.status === 'running'
-          ? 'border-brand-600/30 bg-brand-600/5'
-          : 'border-surface-border bg-surface-overlay/50'
+          ? 'border-brand-300 bg-brand-50'
+          : 'border-surface-border bg-white'
       }`}
     >
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs"
+        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs"
       >
         {step.status === 'running' ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 flex-shrink-0" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500 flex-shrink-0" />
         ) : expanded ? (
           <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
         ) : (
           <ChevronRight className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
         )}
-        <span className="font-medium text-gray-300">{formatToolName(step.tool)}</span>
-        <span className="text-gray-600">#{step.toolNumber}</span>
+        <span className="font-medium text-gray-700">{formatToolName(step.tool)}</span>
+        <span className="text-gray-500">#{step.toolNumber}</span>
         {step.durationMs !== undefined && (
-          <span className="text-gray-600 ml-auto">{step.durationMs}ms</span>
+          <span className="text-gray-500 ml-auto">{step.durationMs}ms</span>
         )}
         {step.resultLength !== undefined && (
-          <span className="text-gray-600">{formatBytes(step.resultLength)}</span>
+          <span className="text-gray-500">{formatBytes(step.resultLength)}</span>
         )}
       </button>
 
       {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-surface-border/50 pt-2">
-          {/* Arguments */}
+        <div className="px-3 pb-3 space-y-2 border-t border-surface-border pt-2">
           <div>
-            <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Arguments</span>
-            <pre className="mt-1 text-xs text-gray-400 bg-surface/50 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto font-mono">
+            <span className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Arguments</span>
+            <pre className="mt-1 text-xs text-gray-700 bg-slate-50 rounded-lg p-2 overflow-x-auto max-h-40 overflow-y-auto font-mono border border-surface-border">
               {JSON.stringify(step.args, null, 2)}
             </pre>
           </div>
-          {/* Result preview */}
           {step.resultPreview && (
             <div>
-              <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Result Preview</span>
-              <pre className="mt-1 text-xs text-gray-400 bg-surface/50 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto font-mono whitespace-pre-wrap">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Result Preview</span>
+              <pre className="mt-1 text-xs text-gray-700 bg-slate-50 rounded-lg p-2 overflow-x-auto max-h-60 overflow-y-auto font-mono whitespace-pre-wrap border border-surface-border">
                 {tryFormatJson(step.resultPreview)}
               </pre>
             </div>

@@ -67,22 +67,21 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-surface-raised border border-surface-border rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white border border-surface-border rounded-2xl shadow-soft w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border">
-          <h2 className="text-lg font-semibold text-gray-100">Create Organization</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-300 transition-colors">
+          <h2 className="text-lg font-semibold text-gray-800">Create Organization</h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg hover:bg-surface-overlay">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Basic info */}
           <div>
-            <h3 className="text-sm font-medium text-gray-300 mb-3">Basic Information</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Basic Information</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Name *</label>
+                <label className="block text-xs text-gray-600 mb-1.5">Name *</label>
                 <input
                   type="text"
                   value={form.name}
@@ -93,7 +92,7 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1.5">Slug *</label>
+                <label className="block text-xs text-gray-600 mb-1.5">Slug *</label>
                 <input
                   type="text"
                   value={form.slug}
@@ -106,7 +105,7 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
               </div>
             </div>
             <div className="mt-3">
-              <label className="block text-xs text-gray-500 mb-1.5">Description</label>
+              <label className="block text-xs text-gray-600 mb-1.5">Description</label>
               <input
                 type="text"
                 value={form.description}
@@ -119,17 +118,16 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
 
           {/* Service mappings */}
           <div>
-            <h3 className="text-sm font-medium text-gray-300 mb-3">Service Connections</h3>
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Service Connections</h3>
 
-            {/* Code Parser */}
-            <div className="bg-surface-overlay border border-surface-border rounded-lg p-4 mb-3">
+            <div className="bg-surface-overlay/80 border border-surface-border rounded-xl p-4 mb-3">
               <div className="mb-3">
-                <h4 className="text-sm font-medium text-gray-200">Code Parser</h4>
+                <h4 className="text-sm font-medium text-gray-800">Code Parser</h4>
                 <p className="text-xs text-gray-500 mt-0.5">Code parsing and entry point analysis</p>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+                  <label className="block text-xs text-gray-600 mb-1">Base URL</label>
                   <input
                     type="url"
                     value={form.code_parser_base_url}
@@ -139,7 +137,7 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Organization ID</label>
+                  <label className="block text-xs text-gray-600 mb-1">Organization ID</label>
                   <input
                     type="text"
                     value={form.code_parser_org_id}
@@ -149,7 +147,7 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 mb-1">Repository ID</label>
+                  <label className="block text-xs text-gray-600 mb-1">Repository ID</label>
                   <input
                     type="text"
                     value={form.code_parser_repo_id}
@@ -187,7 +185,7 @@ export function OrgSetupModal({ onClose, onCreated }: OrgSetupModalProps) {
           </div>
 
           {error && (
-            <div className="px-4 py-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
               {error}
             </div>
           )}
@@ -228,14 +226,14 @@ function ServiceConfig({
   onIdentifierChange: (v: string) => void;
 }) {
   return (
-    <div className="bg-surface-overlay border border-surface-border rounded-lg p-4 mb-3">
+    <div className="bg-surface-overlay/80 border border-surface-border rounded-xl p-4 mb-3">
       <div className="mb-3">
-        <h4 className="text-sm font-medium text-gray-200">{title}</h4>
+        <h4 className="text-sm font-medium text-gray-800">{title}</h4>
         <p className="text-xs text-gray-500 mt-0.5">{description}</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Base URL</label>
+          <label className="block text-xs text-gray-600 mb-1">Base URL</label>
           <input
             type="url"
             value={baseUrl}
@@ -245,7 +243,7 @@ function ServiceConfig({
           />
         </div>
         <div>
-          <label className="block text-xs text-gray-500 mb-1">{identifierLabel}</label>
+          <label className="block text-xs text-gray-600 mb-1">{identifierLabel}</label>
           <input
             type="text"
             value={identifier}

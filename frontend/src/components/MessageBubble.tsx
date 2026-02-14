@@ -12,36 +12,31 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
-    <div
-      className={`flex gap-3 py-4 ${isUser ? '' : ''}`}
-    >
-      {/* Avatar */}
+    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div
-        className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
+        className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
           isUser
-            ? 'bg-surface-overlay text-gray-400'
-            : 'bg-brand-600/20 text-brand-400'
+            ? 'bg-slate-200 text-slate-600'
+            : 'bg-brand-100 text-brand-600'
         }`}
       >
         {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-medium text-gray-400">
+      <div className={`flex-1 min-w-0 ${isUser ? 'text-right' : ''}`}>
+        <div className={`flex items-center gap-2 mb-1.5 ${isUser ? 'justify-end' : ''}`}>
+          <span className="text-xs font-medium text-gray-500">
             {isUser ? 'You' : 'FixAI'}
           </span>
-          <span className="text-xs text-gray-600">
+          <span className="text-xs text-gray-400">
             {formatTime(message.created_at)}
           </span>
         </div>
 
-        {/* User context badges */}
         {isUser && message.context && (() => {
           const ctx = message.context as Record<string, unknown>;
           return (
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className={`flex flex-wrap gap-1.5 mb-2 ${isUser ? 'justify-end' : ''}`}>
               {ctx.service ? <ContextBadge label="Service" value={String(ctx.service)} /> : null}
               {ctx.environment ? <ContextBadge label="Env" value={String(ctx.environment)} /> : null}
               {ctx.file_path ? <ContextBadge label="File" value={String(ctx.file_path)} icon={<FileText className="w-3 h-3" />} /> : null}
@@ -49,19 +44,20 @@ export function MessageBubble({ message, isStreaming }: MessageBubbleProps) {
           );
         })()}
 
-        {/* Message content */}
         {isUser ? (
-          <p className="text-gray-200 text-sm leading-relaxed whitespace-pre-wrap">
+          <div className="inline-block px-4 py-2.5 rounded-2xl rounded-tr-md bg-slate-100 text-gray-800 text-sm leading-relaxed whitespace-pre-wrap max-w-[85%]">
             {message.content}
-          </p>
+          </div>
         ) : (
-          <div className="markdown-body text-gray-200 text-sm leading-relaxed">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content}
-            </ReactMarkdown>
-            {isStreaming && (
-              <span className="inline-block w-1.5 h-4 bg-brand-400 animate-pulse ml-0.5 align-middle rounded-sm" />
-            )}
+          <div className="px-4 py-3 rounded-2xl rounded-tl-md bg-white border border-surface-border shadow-card max-w-[90%]">
+            <div className="markdown-body text-gray-700 text-sm leading-relaxed">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+              {isStreaming && (
+                <span className="inline-block w-1.5 h-4 bg-brand-500 animate-pulse ml-0.5 align-middle rounded-sm" />
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -79,11 +75,11 @@ function ContextBadge({
   icon?: React.ReactNode;
 }) {
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-surface-overlay
-                     border border-surface-border rounded text-xs text-gray-400">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-white
+                     border border-surface-border rounded-lg text-xs text-gray-600 shadow-card">
       {icon}
       <span className="text-gray-500">{label}:</span>
-      <span className="text-gray-300">{value}</span>
+      <span className="font-medium text-gray-700">{value}</span>
     </span>
   );
 }

@@ -36,7 +36,7 @@ export function DebugView() {
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
-        <Loader2 className="w-6 h-6 animate-spin text-brand-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
       </div>
     );
   }
@@ -45,9 +45,9 @@ export function DebugView() {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
         <div className="text-center">
-          <AlertCircle className="w-8 h-8 text-red-400 mx-auto mb-3" />
-          <p className="text-red-400">{error || 'Trace not found'}</p>
-          <Link to="/" className="text-brand-400 text-sm mt-2 inline-block hover:underline">
+          <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-3" />
+          <p className="text-red-600">{error || 'Trace not found'}</p>
+          <Link to="/" className="text-brand-600 text-sm mt-2 inline-block hover:underline font-medium">
             Back to chat
           </Link>
         </div>
@@ -57,17 +57,16 @@ export function DebugView() {
 
   return (
     <div className="h-screen flex flex-col bg-surface">
-      {/* Header */}
-      <header className="flex items-center gap-4 px-6 py-4 border-b border-surface-border bg-surface-raised/50">
+      <header className="flex items-center gap-4 px-6 py-4 border-b border-surface-border bg-white shadow-card">
         <Link
           to="/"
-          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+          className="flex items-center gap-1.5 text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
         </Link>
         <div className="flex-1 min-w-0">
-          <h1 className="text-base font-semibold text-gray-100 truncate">
+          <h1 className="text-base font-semibold text-gray-800 truncate">
             Debug: {trace.title}
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -75,8 +74,7 @@ export function DebugView() {
           </p>
         </div>
 
-        {/* Summary stats */}
-        <div className="flex items-center gap-4 text-xs text-gray-500">
+        <div className="flex items-center gap-4 text-xs text-gray-600">
           <span className="flex items-center gap-1">
             <MessageSquare className="w-3 h-3" />
             {trace.summary.total_messages} messages
@@ -115,10 +113,10 @@ function TraceEntry({ entry, index }: { entry: DebugTraceEntry; index: number })
   );
 
   const iconMap = {
-    user_message: { icon: User, color: 'bg-surface-overlay text-gray-400', label: 'User' },
-    tool_call: { icon: Wrench, color: 'bg-amber-500/20 text-amber-400', label: 'Tool Call' },
-    tool_response: { icon: Activity, color: 'bg-emerald-500/20 text-emerald-400', label: 'Tool Response' },
-    assistant_response: { icon: Bot, color: 'bg-brand-600/20 text-brand-400', label: 'AI Response' },
+    user_message: { icon: User, color: 'bg-slate-200 text-slate-600', label: 'User' },
+    tool_call: { icon: Wrench, color: 'bg-amber-100 text-amber-700', label: 'Tool Call' },
+    tool_response: { icon: Activity, color: 'bg-emerald-100 text-emerald-700', label: 'Tool Response' },
+    assistant_response: { icon: Bot, color: 'bg-brand-100 text-brand-600', label: 'AI Response' },
   };
 
   const config = iconMap[entry.type];
@@ -142,15 +140,15 @@ function TraceEntry({ entry, index }: { entry: DebugTraceEntry; index: number })
           ) : (
             <ChevronRight className="w-3.5 h-3.5 text-gray-600" />
           )}
-          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">
             {config.label}
             {entry.tool && (
-              <span className="normal-case tracking-normal text-gray-400 ml-1 font-mono">
+              <span className="normal-case tracking-normal text-gray-500 ml-1 font-mono">
                 {entry.tool}
               </span>
             )}
           </span>
-          <span className="text-[10px] text-gray-600 font-mono">
+          <span className="text-[10px] text-gray-500 font-mono">
             {formatTimestamp(entry.timestamp)}
           </span>
         </button>
@@ -158,13 +156,13 @@ function TraceEntry({ entry, index }: { entry: DebugTraceEntry; index: number })
         {expanded && (
           <div className="mt-1">
             {entry.type === 'user_message' && (
-              <div className="bg-surface-overlay border border-surface-border rounded-lg p-4">
-                <p className="text-sm text-gray-200 whitespace-pre-wrap">{entry.content}</p>
+              <div className="bg-white border border-surface-border rounded-xl p-4 shadow-card">
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{entry.content}</p>
                 {entry.context && Object.keys(entry.context).length > 0 && (
                   <div className="mt-2 flex gap-2 flex-wrap">
                     {Object.entries(entry.context).map(([k, v]) => (
-                      <span key={k} className="text-xs bg-surface px-2 py-0.5 rounded text-gray-500">
-                        {k}: <span className="text-gray-400">{String(v)}</span>
+                      <span key={k} className="text-xs bg-surface-overlay px-2 py-0.5 rounded-lg text-gray-600 border border-surface-border">
+                        {k}: <span className="font-medium text-gray-700">{String(v)}</span>
                       </span>
                     ))}
                   </div>
@@ -173,26 +171,26 @@ function TraceEntry({ entry, index }: { entry: DebugTraceEntry; index: number })
             )}
 
             {entry.type === 'tool_call' && entry.arguments && (
-              <div className="bg-surface-overlay border border-surface-border rounded-lg p-3">
-                <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Arguments</span>
-                <pre className="mt-1 text-xs text-gray-400 font-mono bg-surface/50 rounded p-2 overflow-x-auto max-h-60 overflow-y-auto">
+              <div className="bg-white border border-surface-border rounded-xl p-3 shadow-card">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Arguments</span>
+                <pre className="mt-1 text-xs text-gray-700 font-mono bg-slate-50 rounded-lg p-2 overflow-x-auto max-h-60 overflow-y-auto border border-surface-border">
                   {JSON.stringify(entry.arguments, null, 2)}
                 </pre>
               </div>
             )}
 
             {entry.type === 'tool_response' && entry.content && (
-              <div className="bg-surface-overlay border border-surface-border rounded-lg p-3">
-                <span className="text-[10px] uppercase tracking-wider text-gray-600 font-medium">Response</span>
-                <pre className="mt-1 text-xs text-gray-400 font-mono bg-surface/50 rounded p-2 overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap">
+              <div className="bg-white border border-surface-border rounded-xl p-3 shadow-card">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">Response</span>
+                <pre className="mt-1 text-xs text-gray-700 font-mono bg-slate-50 rounded-lg p-2 overflow-x-auto max-h-80 overflow-y-auto whitespace-pre-wrap border border-surface-border">
                   {tryFormatJson(entry.content)}
                 </pre>
               </div>
             )}
 
             {entry.type === 'assistant_response' && entry.content && (
-              <div className="bg-surface-overlay border border-surface-border rounded-lg p-4">
-                <div className="markdown-body text-sm text-gray-200 leading-relaxed">
+              <div className="bg-white border border-surface-border rounded-xl p-4 shadow-card">
+                <div className="markdown-body text-sm text-gray-700 leading-relaxed">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {entry.content}
                   </ReactMarkdown>

@@ -36,26 +36,26 @@ export function Sidebar({
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
 
   return (
-    <aside className="w-72 bg-surface-raised border-r border-surface-border flex flex-col h-full">
+    <aside className="w-72 bg-white border-r border-surface-border flex flex-col h-full shadow-card">
       {/* Header */}
       <div className="p-4 border-b border-surface-border">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
-            <Zap className="w-4 h-4 text-white" />
+        <div className="flex items-center gap-2.5 mb-4">
+          <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center shadow-soft">
+            <Zap className="w-5 h-5 text-white" />
           </div>
-          <span className="font-semibold text-lg text-gray-100">FixAI</span>
+          <span className="font-semibold text-lg text-gray-800">FixAI</span>
         </div>
 
         {/* Org selector */}
         <div className="relative">
           <button
             onClick={() => setOrgDropdownOpen(!orgDropdownOpen)}
-            className="w-full flex items-center justify-between px-3 py-2 bg-surface-overlay
-                       rounded-lg text-sm text-gray-200 hover:bg-surface-border transition-colors"
+            className="w-full flex items-center justify-between px-3 py-2.5 bg-surface-overlay
+                       rounded-xl text-sm text-gray-700 hover:bg-slate-200/80 transition-colors border border-surface-border"
           >
             <div className="flex items-center gap-2 truncate">
-              <Building2 className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <span className="truncate">
+              <Building2 className="w-4 h-4 text-gray-500 flex-shrink-0" />
+              <span className="truncate font-medium">
                 {selectedOrg?.name || 'Select organization'}
               </span>
             </div>
@@ -68,8 +68,8 @@ export function Sidebar({
                 className="fixed inset-0 z-10"
                 onClick={() => setOrgDropdownOpen(false)}
               />
-              <div className="absolute top-full left-0 right-0 mt-1 bg-surface-overlay border
-                              border-surface-border rounded-lg shadow-xl z-20 overflow-hidden">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border
+                              border-surface-border rounded-xl shadow-soft z-20 overflow-hidden">
                 {organizations.map((org) => (
                   <button
                     key={org.id}
@@ -77,8 +77,8 @@ export function Sidebar({
                       onSelectOrg(org);
                       setOrgDropdownOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 text-sm hover:bg-surface-border transition-colors
-                      ${selectedOrg?.id === org.id ? 'text-brand-400 bg-brand-600/10' : 'text-gray-300'}`}
+                    className={`w-full text-left px-3 py-2.5 text-sm transition-colors
+                      ${selectedOrg?.id === org.id ? 'text-brand-600 bg-brand-50 font-medium' : 'text-gray-700 hover:bg-surface-overlay'}`}
                   >
                     {org.name}
                   </button>
@@ -88,8 +88,8 @@ export function Sidebar({
                     onOpenOrgSettings();
                     setOrgDropdownOpen(false);
                   }}
-                  className="w-full text-left px-3 py-2 text-sm text-gray-400
-                             hover:bg-surface-border transition-colors border-t border-surface-border
+                  className="w-full text-left px-3 py-2.5 text-sm text-gray-600
+                             hover:bg-surface-overlay transition-colors border-t border-surface-border
                              flex items-center gap-2"
                 >
                   <Plus className="w-3 h-3" />
@@ -106,9 +106,9 @@ export function Sidebar({
         <div className="p-3">
           <button
             onClick={onNewConversation}
-            className="w-full flex items-center gap-2 px-3 py-2.5 bg-brand-600
-                       hover:bg-brand-700 rounded-lg text-sm font-medium text-white
-                       transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2.5 bg-brand-500
+                       hover:bg-brand-600 rounded-xl text-sm font-medium text-white
+                       transition-colors shadow-soft"
           >
             <Plus className="w-4 h-4" />
             New Conversation
@@ -139,7 +139,7 @@ export function Sidebar({
         <div className="p-3 border-t border-surface-border">
           <button
             onClick={onOpenOrgSettings}
-            className="btn-ghost w-full flex items-center gap-2 justify-center"
+            className="btn-ghost w-full flex items-center gap-2 justify-center text-gray-600"
           >
             <Settings className="w-4 h-4" />
             Organization Settings
@@ -167,15 +167,15 @@ function ConversationItem({
     <div
       onMouseEnter={() => setHovering(true)}
       onMouseLeave={() => setHovering(false)}
-      className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer
+      className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl cursor-pointer
                   mb-0.5 transition-colors ${
                     isActive
-                      ? 'bg-surface-overlay text-gray-100'
-                      : 'text-gray-400 hover:bg-surface-overlay hover:text-gray-200'
+                      ? 'bg-brand-50 text-brand-700 font-medium'
+                      : 'text-gray-600 hover:bg-surface-overlay hover:text-gray-800'
                   }`}
       onClick={onSelect}
     >
-      <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-60" />
+      <MessageSquare className="w-4 h-4 flex-shrink-0 opacity-70" />
       <span className="text-sm truncate flex-1">{conversation.title}</span>
       {hovering && (
         <button
@@ -183,7 +183,7 @@ function ConversationItem({
             e.stopPropagation();
             onDelete();
           }}
-          className="text-gray-500 hover:text-red-400 transition-colors"
+          className="text-gray-400 hover:text-red-500 transition-colors p-0.5"
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>

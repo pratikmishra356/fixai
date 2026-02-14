@@ -11,15 +11,15 @@ export function ContextForm({ context, onChange, onClose }: ContextFormProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+        <h3 className="text-xs font-medium text-gray-600 uppercase tracking-wider">
           Investigation Context
-          <span className="text-gray-600 normal-case tracking-normal ml-2">
+          <span className="text-gray-400 normal-case tracking-normal ml-2">
             (optional)
           </span>
         </h3>
         <button
           onClick={onClose}
-          className="text-gray-500 hover:text-gray-300 transition-colors"
+          className="text-gray-500 hover:text-gray-700 transition-colors p-1 rounded-lg hover:bg-surface-overlay"
         >
           <X className="w-4 h-4" />
         </button>
@@ -27,8 +27,8 @@ export function ContextForm({ context, onChange, onClose }: ContextFormProps) {
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1.5">
-            <Server className="w-3 h-3" />
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5">
+            <Server className="w-3 h-3 text-brand-500" />
             Service Name
           </label>
           <input
@@ -41,8 +41,8 @@ export function ContextForm({ context, onChange, onClose }: ContextFormProps) {
         </div>
 
         <div>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1.5">
-            <Globe className="w-3 h-3" />
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5">
+            <Globe className="w-3 h-3 text-brand-500" />
             Environment
           </label>
           <input
@@ -57,8 +57,8 @@ export function ContextForm({ context, onChange, onClose }: ContextFormProps) {
         </div>
 
         <div>
-          <label className="flex items-center gap-1.5 text-xs text-gray-500 mb-1.5">
-            <FileCode className="w-3 h-3" />
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-1.5">
+            <FileCode className="w-3 h-3 text-brand-500" />
             File Path
           </label>
           <input
