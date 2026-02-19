@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         alias="CODE_PARSER_BASE_URL",
     )
     metrics_explorer_base_url: str = Field(
-        default="http://localhost:8002",
+        default="http://localhost:8001",
         alias="METRICS_EXPLORER_BASE_URL",
     )
     logs_explorer_base_url: str = Field(
