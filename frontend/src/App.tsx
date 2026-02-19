@@ -10,16 +10,14 @@ import {
 } from './api/client';
 import { Sidebar } from './components/Sidebar';
 import { ChatInterface } from './components/ChatInterface';
-import { OrgSetupModal } from './components/OrgSetupModal';
 import { DebugView } from './components/DebugView';
-import { Settings, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 export default function App() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationDetail | null>(null);
-  const [showOrgModal, setShowOrgModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -100,12 +98,6 @@ export default function App() {
     [activeConversation?.id],
   );
 
-  const handleOrgCreated = (org: Organization) => {
-    setOrganizations((prev) => [org, ...prev]);
-    setSelectedOrg(org);
-    setShowOrgModal(false);
-  };
-
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center bg-surface">
@@ -137,12 +129,12 @@ export default function App() {
                 onNewConversation={handleNewConversation}
                 onSelectConversation={handleSelectConversation}
                 onDeleteConversation={handleDeleteConversation}
-                onOpenOrgSettings={() => setShowOrgModal(true)}
               />
               <main className="flex-1 flex flex-col min-w-0">
                 {selectedOrg ? (
                   activeConversation ? (
                     <ChatInterface
+                      key={activeConversation.id}
                       conversation={activeConversation}
                       organization={selectedOrg}
                       onConversationUpdated={(conv) => {
@@ -158,15 +150,9 @@ export default function App() {
                     <EmptyState onNewConversation={handleNewConversation} />
                   )
                 ) : (
-                  <SetupPrompt onSetup={() => setShowOrgModal(true)} />
+                  <NoOrgState />
                 )}
               </main>
-              {showOrgModal && (
-                <OrgSetupModal
-                  onClose={() => setShowOrgModal(false)}
-                  onCreated={handleOrgCreated}
-                />
-              )}
             </div>
           }
         />
@@ -195,21 +181,18 @@ function EmptyState({ onNewConversation }: { onNewConversation: () => void }) {
   );
 }
 
-function SetupPrompt({ onSetup }: { onSetup: () => void }) {
+function NoOrgState() {
   return (
     <div className="flex-1 flex items-center justify-center bg-surface">
       <div className="text-center max-w-md px-6">
         <div className="w-20 h-20 rounded-2xl bg-surface-overlay flex items-center justify-center mx-auto mb-6 shadow-soft">
-          <Settings className="w-10 h-10 text-gray-500" />
+          <Zap className="w-10 h-10 text-gray-500" />
         </div>
-        <h2 className="text-2xl font-semibold text-gray-800 mb-3">Set up your organization</h2>
-        <p className="text-gray-600 mb-8 leading-relaxed">
-          Configure your organization and connect it to your code parser,
-          metrics explorer, and logs explorer services.
+        <h2 className="text-2xl font-semibold text-gray-800 mb-3">No organization found</h2>
+        <p className="text-gray-600 leading-relaxed">
+          Organizations are created from the CodeCircle dashboard.
+          Set up a workspace there and this will be ready to use.
         </p>
-        <button onClick={onSetup} className="btn-primary text-base px-6 py-3 rounded-xl">
-          Create Organization
-        </button>
       </div>
     </div>
   );

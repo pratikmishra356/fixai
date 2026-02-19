@@ -6,7 +6,6 @@ import {
   Trash2,
   ChevronDown,
   Zap,
-  Settings,
   Building2,
 } from 'lucide-react';
 
@@ -19,7 +18,6 @@ interface SidebarProps {
   onNewConversation: () => void;
   onSelectConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
-  onOpenOrgSettings: () => void;
 }
 
 export function Sidebar({
@@ -31,7 +29,6 @@ export function Sidebar({
   onNewConversation,
   onSelectConversation,
   onDeleteConversation,
-  onOpenOrgSettings,
 }: SidebarProps) {
   const [orgDropdownOpen, setOrgDropdownOpen] = useState(false);
 
@@ -83,18 +80,6 @@ export function Sidebar({
                     {org.name}
                   </button>
                 ))}
-                <button
-                  onClick={() => {
-                    onOpenOrgSettings();
-                    setOrgDropdownOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2.5 text-sm text-gray-600
-                             hover:bg-surface-overlay transition-colors border-t border-surface-border
-                             flex items-center gap-2"
-                >
-                  <Plus className="w-3 h-3" />
-                  Add organization
-                </button>
               </div>
             </>
           )}
@@ -134,18 +119,6 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* Footer */}
-      {selectedOrg && (
-        <div className="p-3 border-t border-surface-border">
-          <button
-            onClick={onOpenOrgSettings}
-            className="btn-ghost w-full flex items-center gap-2 justify-center text-gray-600"
-          >
-            <Settings className="w-4 h-4" />
-            Organization Settings
-          </button>
-        </div>
-      )}
     </aside>
   );
 }
