@@ -109,76 +109,84 @@ export interface SendMessageOptions {
   onError: (error: string) => void;
 }
 
-export async function sendMessage(opts: SendMessageOptions): Promise<void> {
-  const body: Record<string, unknown> = { content: opts.content };
-  if (opts.context) body.context = opts.context;
+export function sendMessage(opts: SendMessageOptions): { promise: Promise<void>; stop: () => void } {
+  const promise = (async () => {
+    const body: Record<string, unknown> = { content: opts.content };
+    if (opts.context) body.context = opts.context;
 
-  const res = await fetch(
-    `${BASE}/conversations/${opts.conversationId}/messages`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    },
-  );
+    const res = await fetch(
+      `${BASE}/conversations/${opts.conversationId}/messages`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    );
 
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    opts.onError(err.detail || `HTTP ${res.status}`);
-    return;
-  }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      opts.onError(err.detail || `HTTP ${res.status}`);
+      return;
+    }
 
-  const reader = res.body?.getReader();
-  if (!reader) {
-    opts.onError('No response stream');
-    return;
-  }
+    const reader = res.body?.getReader();
+    if (!reader) {
+      opts.onError('No response stream');
+      return;
+    }
 
-  const decoder = new TextDecoder();
-  let buffer = '';
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
 
-    let currentEvent = '';
+      let currentEvent = '';
 
-    for (const line of lines) {
-      if (line.startsWith('event: ')) {
-        currentEvent = line.slice(7).trim();
-      } else if (line.startsWith('data: ')) {
-        const raw = line.slice(6);
-        try {
-          const data = JSON.parse(raw);
-          switch (currentEvent) {
-            case 'token':
-              opts.onToken(data.content || '');
-              break;
-            case 'tool_start':
-              opts.onToolStart(data as ToolStartEvent);
-              break;
-            case 'tool_end':
-              opts.onToolEnd(data as ToolEndEvent);
-              break;
-            case 'stats':
-              opts.onStats(data as AgentStats);
-              break;
-            case 'done':
-              opts.onDone(data.content || '');
-              break;
-            case 'error':
-              opts.onError(data.error || 'Unknown error');
-              break;
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+        } else if (line.startsWith('data: ')) {
+          const raw = line.slice(6);
+          try {
+            const data = JSON.parse(raw);
+            switch (currentEvent) {
+              case 'token':
+                opts.onToken(data.content || '');
+                break;
+              case 'tool_start':
+                opts.onToolStart(data as ToolStartEvent);
+                break;
+              case 'tool_end':
+                opts.onToolEnd(data as ToolEndEvent);
+                break;
+              case 'stats':
+                opts.onStats(data as AgentStats);
+                break;
+              case 'done':
+                opts.onDone(data.content || '');
+                break;
+              case 'error':
+                opts.onError(data.error || 'Unknown error');
+                break;
+            }
+          } catch {
+            // ignore malformed JSON
           }
-        } catch {
-          // ignore malformed JSON
+          currentEvent = '';
         }
-        currentEvent = '';
       }
     }
-  }
+  })();
+
+  const stop = () => {
+    fetch(`${BASE}/conversations/${opts.conversationId}/stop`, { method: 'POST' }).catch(() => {});
+  };
+
+  return { promise, stop };
 }

@@ -6,7 +6,7 @@ import { MessageBubble } from './MessageBubble';
 import { ContextForm } from './ContextForm';
 import {
   Send, Loader2, SlidersHorizontal, X, ChevronDown, ChevronRight,
-  Activity, Bug, Clock, Cpu, Gauge,
+  Activity, Bug, Clock, Cpu, Gauge, Square,
 } from 'lucide-react';
 
 interface ChatInterfaceProps {
@@ -36,6 +36,7 @@ export function ChatInterface({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const stopRef = useRef<(() => void) | null>(null);
 
   // --- Refs for cross-conversation progress (survive conversation switches) ---
   const currentConvIdRef = useRef(conversation.id);
@@ -147,7 +148,7 @@ export function ChatInterface({
     let fullResponse = '';
 
     try {
-      await sendMessage({
+      const { promise, stop } = sendMessage({
         conversationId: convId,
         content: userContent,
         context: hasContext(context) ? context : undefined,
@@ -239,6 +240,8 @@ export function ChatInterface({
           }
         },
       });
+      stopRef.current = stop;
+      await promise;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to send message';
       pushProgress(convId, { error: errMsg, isStreaming: false, streamingContent: '' });
@@ -247,7 +250,14 @@ export function ChatInterface({
         setIsStreaming(false);
         setStreamingContent('');
       }
+    } finally {
+      stopRef.current = null;
     }
+  };
+
+  const handleStop = () => {
+    stopRef.current?.();
+    stopRef.current = null;
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -421,13 +431,23 @@ export function ChatInterface({
             />
           </div>
 
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
-            className="btn-primary p-2.5 flex-shrink-0"
-          >
-            {isStreaming ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-          </button>
+          {isStreaming ? (
+            <button
+              onClick={handleStop}
+              className="p-2.5 flex-shrink-0 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors"
+              title="Stop investigation"
+            >
+              <Square className="w-5 h-5" />
+            </button>
+          ) : (
+            <button
+              onClick={handleSend}
+              disabled={!input.trim()}
+              className="btn-primary p-2.5 flex-shrink-0"
+            >
+              <Send className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {hasContext(context) && !showContext && (

@@ -28,6 +28,29 @@ from app.agent.summarize import summarize_conversation
 
 logger = structlog.get_logger(__name__)
 
+# ---------- In-memory stop flag registry ----------
+
+_stop_flags: dict[str, asyncio.Event] = {}
+
+
+def _create_stop_flag(conversation_id: str) -> asyncio.Event:
+    event = asyncio.Event()
+    _stop_flags[conversation_id] = event
+    return event
+
+
+def _request_stop(conversation_id: str) -> bool:
+    event = _stop_flags.get(conversation_id)
+    if event:
+        event.set()
+        return True
+    return False
+
+
+def _cleanup_stop_flag(conversation_id: str):
+    _stop_flags.pop(conversation_id, None)
+
+
 # When conversation has at least this many messages (including the new one), we use
 # summarization: summarize older messages and pass summary + last 2 exchanges only.
 RECENT_MESSAGE_COUNT = 4  # last 2 user + 2 assistant before the new user message
@@ -290,6 +313,13 @@ async def get_conversation_debug(
 
 # ---------- Send message (SSE streaming) ----------
 
+@router.post("/conversations/{conversation_id}/stop")
+async def stop_conversation(conversation_id: UUID):
+    """Signal the running agent to stop and generate a partial summary."""
+    found = _request_stop(str(conversation_id))
+    return {"status": "stop_requested" if found else "no_active_stream"}
+
+
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(
     conversation_id: UUID,
@@ -333,6 +363,43 @@ async def send_message(
     # Commit (including any updated conversation_summary) before streaming
     await db.commit()
 
+    async def _save_messages(
+        full_response: str,
+        tool_calls_to_save: list[dict],
+        tool_responses_to_save: list[dict],
+    ):
+        """Persist accumulated messages (tool calls, tool responses, assistant reply)."""
+        from app.database import async_session_factory
+        async with async_session_factory() as save_db:
+            for tool_call in tool_calls_to_save:
+                save_db.add(Message(
+                    id=_uuid.uuid4(),
+                    conversation_id=conv.id,
+                    role="assistant",
+                    content=f"Calling tool: {tool_call['name']}",
+                    tool_name=tool_call["name"],
+                    tool_call_id=tool_call["id"],
+                    context=tool_call.get("args"),
+                ))
+            for tool_resp in tool_responses_to_save:
+                save_db.add(Message(
+                    id=_uuid.uuid4(),
+                    conversation_id=conv.id,
+                    role="tool",
+                    content=tool_resp["content"],
+                    tool_name=tool_resp["tool_name"],
+                    tool_call_id=tool_resp["tool_call_id"],
+                ))
+            save_db.add(Message(
+                id=_uuid.uuid4(),
+                conversation_id=conv.id,
+                role="assistant",
+                content=full_response or "No response generated.",
+            ))
+            await save_db.commit()
+
+    cancel_event = _create_stop_flag(str(conv.id))
+
     async def event_stream():
         """Generate SSE events from the agent."""
         full_response = ""
@@ -346,6 +413,7 @@ async def send_message(
                 conversation_history=history,
                 context=context,
                 capture_full_trace=True,
+                cancel_event=cancel_event,
             ):
                 if event_type == "token":
                     full_response += data
@@ -387,59 +455,32 @@ async def send_message(
                     yield f"event: stats\ndata: {json.dumps(data)}\n\n"
 
                 elif event_type == "done":
-                    # Prefer the graph's final_response (synthesis from last AIMessage)
-                    # over accumulated tokens (which include intermediate thinking)
                     done_content = data or full_response or "No response generated."
                     full_response = done_content
                     yield f"event: done\ndata: {json.dumps({'content': done_content})}\n\n"
 
                 elif event_type == "trace":
-                    pass  # Trace data handled internally
+                    pass
 
                 elif event_type == "error":
                     yield f"event: error\ndata: {json.dumps({'error': data})}\n\n"
 
-            # Persist all messages in a new session
-            from app.database import async_session_factory
-            async with async_session_factory() as save_db:
-                # Save tool calls as assistant messages
-                for tool_call in tool_calls_to_save:
-                    tool_msg = Message(
-                        id=_uuid.uuid4(),
-                        conversation_id=conv.id,
-                        role="assistant",
-                        content=f"Calling tool: {tool_call['name']}",
-                        tool_name=tool_call["name"],
-                        tool_call_id=tool_call["id"],
-                        context=tool_call.get("args"),
-                    )
-                    save_db.add(tool_msg)
+            await asyncio.shield(_save_messages(full_response, tool_calls_to_save, tool_responses_to_save))
 
-                # Save tool responses
-                for tool_resp in tool_responses_to_save:
-                    tool_msg = Message(
-                        id=_uuid.uuid4(),
-                        conversation_id=conv.id,
-                        role="tool",
-                        content=tool_resp["content"],
-                        tool_name=tool_resp["tool_name"],
-                        tool_call_id=tool_resp["tool_call_id"],
-                    )
-                    save_db.add(tool_msg)
-
-                # Save final assistant response
-                assistant_msg = Message(
-                    id=_uuid.uuid4(),
-                    conversation_id=conv.id,
-                    role="assistant",
-                    content=full_response or "No response generated.",
-                )
-                save_db.add(assistant_msg)
-                await save_db.commit()
+        except (asyncio.CancelledError, GeneratorExit):
+            logger.info("stream_cancelled", conversation_id=str(conv.id), tokens_collected=len(full_response))
+            partial = full_response.strip() or "Investigation stopped before any results were collected."
+            try:
+                await asyncio.shield(_save_messages(partial, tool_calls_to_save, tool_responses_to_save))
+            except Exception:
+                logger.error("save_on_cancel_failed", conversation_id=str(conv.id))
 
         except Exception as e:
             logger.error("stream_error", error=str(e))
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+        finally:
+            _cleanup_stop_flag(str(conv.id))
 
     return StreamingResponse(
         event_stream(),

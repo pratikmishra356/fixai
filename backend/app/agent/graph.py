@@ -8,6 +8,7 @@ Guardrails:
 Each agent→tool round counts as 2 graph steps.
 """
 
+import asyncio
 import time
 from uuid import UUID
 
@@ -361,6 +362,7 @@ async def run_agent(
     conversation_history: list[BaseMessage] | None = None,
     context: dict | None = None,
     capture_full_trace: bool = False,
+    cancel_event: asyncio.Event | None = None,
 ):
     """Run the agent for one user turn.
 
@@ -445,11 +447,18 @@ async def run_agent(
             "ai_max_tokens": organization.claude_max_tokens or 0,
         }
 
+        stopped_by_user = False
+
         async for event in agent.astream_events(
             initial_state,
             {"recursion_limit": RECURSION_LIMIT},
             version="v2",
         ):
+            if cancel_event and cancel_event.is_set():
+                stopped_by_user = True
+                logger.info("agent_stopped_by_user", ai_calls=ai_call_count, tool_calls=tool_call_count)
+                break
+
             kind = event.get("event", "")
             event_data = event.get("data", {})
 
@@ -577,9 +586,19 @@ async def run_agent(
 
         # Determine final_response: last AI call content > chain_end > fallback
         final_response = last_ai_content or chain_end_response
+
+        if stopped_by_user:
+            suffix = "\n\n---\n*Investigation stopped by user. Above is a partial summary based on data collected so far.*"
+            if final_response.strip():
+                final_response = final_response.strip() + suffix
+            else:
+                final_response = "Investigation stopped by user before any results were collected."
+
         logger.info(
             "final_response_selected",
-            source="on_chat_model_end" if last_ai_content else ("on_chain_end" if chain_end_response else "none"),
+            source="stopped_by_user" if stopped_by_user else (
+                "on_chat_model_end" if last_ai_content else ("on_chain_end" if chain_end_response else "none")
+            ),
             content_len=len(final_response),
         )
 
