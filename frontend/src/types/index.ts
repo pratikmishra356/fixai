@@ -86,6 +86,15 @@ export interface AgentStats {
   final?: boolean;
 }
 
+/** Progress (streaming, tool steps) stored per conversation so switching back restores it */
+export interface ConversationProgress {
+  toolSteps: ToolStep[];
+  streamingContent: string;
+  isStreaming: boolean;
+  agentStats: AgentStats | null;
+  error: string | null;
+}
+
 export interface DebugTrace {
   conversation_id: string;
   title: string;

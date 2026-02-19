@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import type { Organization, Conversation, ConversationDetail } from './types';
+import type { Organization, Conversation, ConversationDetail, ConversationProgress } from './types';
 import {
   listOrganizations,
   listConversations,
@@ -18,6 +18,7 @@ export default function App() {
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] = useState<ConversationDetail | null>(null);
+  const [progressByConv, setProgressByConv] = useState<Record<string, ConversationProgress>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -88,6 +89,11 @@ export default function App() {
       try {
         await deleteConversation(convId);
         setConversations((prev) => prev.filter((c) => c.id !== convId));
+        setProgressByConv((prev) => {
+          const next = { ...prev };
+          delete next[convId];
+          return next;
+        });
         if (activeConversation?.id === convId) {
           setActiveConversation(null);
         }
@@ -97,6 +103,19 @@ export default function App() {
     },
     [activeConversation?.id],
   );
+
+  const handleProgressUpdate = useCallback((convId: string, progress: ConversationProgress) => {
+    setProgressByConv((prev) => ({ ...prev, [convId]: progress }));
+  }, []);
+
+  const handleConversationUpdated = useCallback((conv: ConversationDetail) => {
+    setActiveConversation((prev) => (prev?.id === conv.id ? conv : prev));
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === conv.id ? { ...c, title: conv.title, message_count: conv.messages.length } : c,
+      ),
+    );
+  }, []);
 
   if (loading) {
     return (
@@ -134,17 +153,11 @@ export default function App() {
                 {selectedOrg ? (
                   activeConversation ? (
                     <ChatInterface
-                      key={activeConversation.id}
                       conversation={activeConversation}
                       organization={selectedOrg}
-                      onConversationUpdated={(conv) => {
-                        setActiveConversation(conv);
-                        setConversations((prev) =>
-                          prev.map((c) =>
-                            c.id === conv.id ? { ...c, title: conv.title, message_count: conv.messages.length } : c,
-                          ),
-                        );
-                      }}
+                      initialProgress={progressByConv[activeConversation.id]}
+                      onConversationUpdated={handleConversationUpdated}
+                      onProgressUpdate={handleProgressUpdate}
                     />
                   ) : (
                     <EmptyState onNewConversation={handleNewConversation} />

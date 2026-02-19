@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import type { Organization, ConversationDetail, Message, UserContext, ToolStep, AgentStats } from '../types';
+import type { Organization, ConversationDetail, Message, UserContext, ToolStep, AgentStats, ConversationProgress } from '../types';
 import { sendMessage, type ToolStartEvent, type ToolEndEvent } from '../api/client';
 import { MessageBubble } from './MessageBubble';
 import { ContextForm } from './ContextForm';
@@ -12,25 +12,83 @@ import {
 interface ChatInterfaceProps {
   conversation: ConversationDetail;
   organization: Organization;
+  initialProgress?: ConversationProgress | null;
   onConversationUpdated: (conv: ConversationDetail) => void;
+  onProgressUpdate?: (convId: string, progress: ConversationProgress) => void;
 }
 
 export function ChatInterface({
   conversation,
   organization,
+  initialProgress,
   onConversationUpdated,
+  onProgressUpdate,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
-  const [toolSteps, setToolSteps] = useState<ToolStep[]>([]);
-  const [agentStats, setAgentStats] = useState<AgentStats | null>(null);
+  const [isStreaming, setIsStreaming] = useState(() => initialProgress?.isStreaming ?? false);
+  const [streamingContent, setStreamingContent] = useState(() => initialProgress?.streamingContent ?? '');
+  const [toolSteps, setToolSteps] = useState<ToolStep[]>(() => initialProgress?.toolSteps ?? []);
+  const [agentStats, setAgentStats] = useState<AgentStats | null>(() => initialProgress?.agentStats ?? null);
   const [showContext, setShowContext] = useState(false);
   const [context, setContext] = useState<UserContext>({});
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => initialProgress?.error ?? null);
+  const [showDebug, setShowDebug] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // --- Refs for cross-conversation progress (survive conversation switches) ---
+  const currentConvIdRef = useRef(conversation.id);
+  const onProgressUpdateRef = useRef(onProgressUpdate);
+  onProgressUpdateRef.current = onProgressUpdate;
+  const onConversationUpdatedRef = useRef(onConversationUpdated);
+  onConversationUpdatedRef.current = onConversationUpdated;
+
+  // Per-conversation progress accumulators stored in refs so stream
+  // callbacks can push updates even after the user switches away.
+  const streamProgressRef = useRef<Record<string, ConversationProgress>>({});
+
+  // Mirror of local display state kept in a ref so the switch effect can
+  // snapshot it without stale-closure issues.
+  const currentProgressRef = useRef<ConversationProgress>({
+    toolSteps: initialProgress?.toolSteps ?? [],
+    streamingContent: initialProgress?.streamingContent ?? '',
+    isStreaming: initialProgress?.isStreaming ?? false,
+    agentStats: initialProgress?.agentStats ?? null,
+    error: initialProgress?.error ?? null,
+  });
+
+  useEffect(() => {
+    currentProgressRef.current = { toolSteps, streamingContent, isStreaming, agentStats, error };
+  }, [toolSteps, streamingContent, isStreaming, agentStats, error]);
+
+  const pushProgress = useCallback((convId: string, update: Partial<ConversationProgress>) => {
+    const prev = streamProgressRef.current[convId] ?? {
+      toolSteps: [], streamingContent: '', isStreaming: false, agentStats: null, error: null,
+    };
+    const merged = { ...prev, ...update };
+    streamProgressRef.current[convId] = merged;
+    onProgressUpdateRef.current?.(convId, { ...merged });
+  }, []);
+
+  // Handle conversation switch (component stays mounted — no key={} remount)
+  useEffect(() => {
+    if (currentConvIdRef.current === conversation.id) return;
+
+    // Snapshot the state we're leaving
+    pushProgress(currentConvIdRef.current, currentProgressRef.current);
+    currentConvIdRef.current = conversation.id;
+
+    // Restore: prefer ref-based accumulator (most up-to-date) then parent snapshot
+    const saved = streamProgressRef.current[conversation.id] ?? initialProgress;
+    setIsStreaming(saved?.isStreaming ?? false);
+    setStreamingContent(saved?.streamingContent ?? '');
+    setToolSteps(saved?.toolSteps ?? []);
+    setAgentStats(saved?.agentStats ?? null);
+    setError(saved?.error ?? null);
+    setInput('');
+    setShowContext(false);
+  }, [conversation.id, initialProgress, pushProgress]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -48,6 +106,7 @@ export function ChatInterface({
     if (!input.trim() || isStreaming) return;
 
     const userContent = input.trim();
+    const convId = conversation.id;
     setInput('');
     setError(null);
     setIsStreaming(true);
@@ -55,9 +114,19 @@ export function ChatInterface({
     setToolSteps([]);
     setAgentStats(null);
 
+    // Reset ref-based progress for this stream
+    streamProgressRef.current[convId] = {
+      toolSteps: [],
+      streamingContent: '',
+      isStreaming: true,
+      agentStats: null,
+      error: null,
+    };
+    pushProgress(convId, streamProgressRef.current[convId]);
+
     const userMsg: Message = {
       id: crypto.randomUUID(),
-      conversation_id: conversation.id,
+      conversation_id: convId,
       role: 'user',
       content: userContent,
       context: hasContext(context) ? context : null,
@@ -73,79 +142,111 @@ export function ChatInterface({
           ? userContent.slice(0, 80) + (userContent.length > 80 ? '...' : '')
           : conversation.title,
     };
-    onConversationUpdated(updatedConv);
+    onConversationUpdatedRef.current(updatedConv);
 
     let fullResponse = '';
 
     try {
       await sendMessage({
-        conversationId: conversation.id,
+        conversationId: convId,
         content: userContent,
         context: hasContext(context) ? context : undefined,
         onToken: (token) => {
           fullResponse += token;
-          setStreamingContent((prev) => prev + token);
+          const prev = streamProgressRef.current[convId];
+          const nextContent = (prev?.streamingContent ?? '') + token;
+          pushProgress(convId, { streamingContent: nextContent });
+          if (currentConvIdRef.current === convId) {
+            setStreamingContent(nextContent);
+          }
         },
         onToolStart: (data: ToolStartEvent) => {
-          setToolSteps((prev) => [
-            ...prev,
-            {
-              id: data.id,
-              tool: data.tool,
-              args: data.args,
-              toolNumber: data.tool_number,
-              aiCall: data.ai_call,
-              status: 'running',
-            },
-          ]);
+          const prev = streamProgressRef.current[convId];
+          const newStep: ToolStep = {
+            id: data.id,
+            tool: data.tool,
+            args: data.args,
+            toolNumber: data.tool_number,
+            aiCall: data.ai_call,
+            status: 'running',
+          };
+          const nextSteps = [...(prev?.toolSteps ?? []), newStep];
+          pushProgress(convId, { toolSteps: nextSteps });
+          if (currentConvIdRef.current === convId) {
+            setToolSteps(nextSteps);
+          }
         },
         onToolEnd: (data: ToolEndEvent) => {
-          setToolSteps((prev) => {
-            const updated = [...prev];
-            const running = updated.findIndex((t) => t.status === 'running');
-            if (running >= 0) {
-              updated[running] = {
-                ...updated[running],
-                status: 'done',
-                resultPreview: data.result_preview,
-                resultLength: data.result_length,
-                durationMs: data.duration_ms,
-              };
-            }
-            return updated;
-          });
+          const prev = streamProgressRef.current[convId];
+          const steps = [...(prev?.toolSteps ?? [])];
+          const running = steps.findIndex((t) => t.status === 'running');
+          if (running >= 0) {
+            steps[running] = {
+              ...steps[running],
+              status: 'done',
+              resultPreview: data.result_preview,
+              resultLength: data.result_length,
+              durationMs: data.duration_ms,
+            };
+          }
+          pushProgress(convId, { toolSteps: steps });
+          if (currentConvIdRef.current === convId) {
+            setToolSteps(steps);
+          }
         },
         onStats: (stats: AgentStats) => {
-          setAgentStats(stats);
+          pushProgress(convId, { agentStats: stats });
+          if (currentConvIdRef.current === convId) {
+            setAgentStats(stats);
+          }
         },
         onDone: (content) => {
           fullResponse = content || fullResponse;
           const assistantMsg: Message = {
             id: crypto.randomUUID(),
-            conversation_id: conversation.id,
+            conversation_id: convId,
             role: 'assistant',
             content: fullResponse,
             context: null,
             tool_name: null,
             created_at: new Date().toISOString(),
           };
-          onConversationUpdated({
+          // Always update sidebar + conditionally update activeConversation
+          onConversationUpdatedRef.current({
             ...updatedConv,
             messages: [...updatedConv.messages, assistantMsg],
           });
-          setIsStreaming(false);
-          setStreamingContent('');
+          // Clear progress — response is now in conversation.messages
+          pushProgress(convId, {
+            isStreaming: false,
+            streamingContent: '',
+            toolSteps: [],
+            agentStats: null,
+          });
+          if (currentConvIdRef.current === convId) {
+            setIsStreaming(false);
+            setStreamingContent('');
+            setToolSteps([]);
+            setAgentStats(null);
+          }
         },
         onError: (err) => {
-          setError(err);
-          setIsStreaming(false);
-          setStreamingContent('');
+          pushProgress(convId, { error: err, isStreaming: false, streamingContent: '' });
+          if (currentConvIdRef.current === convId) {
+            setError(err);
+            setIsStreaming(false);
+            setStreamingContent('');
+          }
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-      setIsStreaming(false);
-      setStreamingContent('');
+      const errMsg = err instanceof Error ? err.message : 'Failed to send message';
+      pushProgress(convId, { error: errMsg, isStreaming: false, streamingContent: '' });
+      if (currentConvIdRef.current === convId) {
+        setError(errMsg);
+        setIsStreaming(false);
+        setStreamingContent('');
+      }
     }
   };
 
@@ -155,6 +256,12 @@ export function ChatInterface({
       handleSend();
     }
   };
+
+  const displayMessages = showDebug
+    ? conversation.messages
+    : conversation.messages.filter(
+        (m) => m.role === 'user' || (m.role === 'assistant' && !m.tool_name),
+      );
 
   return (
     <div className="flex-1 flex flex-col h-full bg-surface">
@@ -187,14 +294,27 @@ export function ChatInterface({
               </span>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => setShowDebug((v) => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-xl border transition-colors ${
+              showDebug
+                ? 'bg-brand-100 text-brand-700 border-brand-300'
+                : 'text-gray-600 hover:text-brand-600 bg-surface-overlay hover:bg-brand-50 border-surface-border'
+            }`}
+            title={showDebug ? 'Hide tool calls and responses' : 'Show tool calls and responses'}
+          >
+            <Bug className="w-3.5 h-3.5" />
+            {showDebug ? 'Hide debug' : 'Show debug'}
+          </button>
           {conversation.messages.length > 0 && (
             <Link
               to={`/debug/${conversation.id}`}
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 hover:text-brand-600 bg-surface-overlay hover:bg-brand-50 rounded-xl border border-surface-border transition-colors"
-              title="View debug trace"
+              title="View full debug trace in new page"
             >
               <Bug className="w-3.5 h-3.5" />
-              Debug
+              Debug page
             </Link>
           )}
         </div>
@@ -209,11 +329,11 @@ export function ChatInterface({
         )}
         <div className="space-y-6">
 
-        {conversation.messages.map((msg) => (
+        {displayMessages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} />
         ))}
 
-        {/* Streaming */}
+        {/* In-flight progress: tool steps, streaming content, spinner */}
         {isStreaming && (
           <>
             {toolSteps.length > 0 && (
@@ -239,7 +359,7 @@ export function ChatInterface({
               />
             )}
 
-            {!streamingContent && toolSteps.some((t) => t.status === 'running') && (
+            {!streamingContent && (
               <div className="flex items-center gap-2 text-gray-500 text-sm py-3">
                 <Loader2 className="w-4 h-4 animate-spin text-brand-500" />
                 <span>Investigating...</span>
