@@ -110,6 +110,10 @@ Do not search for other dashboards unless the used ones don't have relevant metr
   Call `logs_search_sources` to find the service's log source name, then `logs_search` \
   with that index and source to query for errors, exceptions, or specific events in the \
   time range.
+- **Time ranges**: Both `metrics_query` and `logs_search` support relative time ranges \
+  (e.g. '1h', '24h') AND absolute calendar date ranges via `start_time`/`end_time` \
+  ISO 8601 parameters (e.g. '2026-02-10T00:00:00Z'). When the user asks about a \
+  specific date or date range, use absolute times instead of relative.
 - For error/exception investigations, check both metrics and logs — they capture \
   different failure modes (infrastructure 5xx vs application exceptions).
 

@@ -291,6 +291,8 @@ async def metrics_query(
     filters: dict | None = None,
     group_by: list[str] | None = None,
     time_range: str = "1h",
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> str:
     """Execute a metric query and return datapoints.
 
@@ -303,6 +305,11 @@ async def metrics_query(
                  aggregated data across all services.
         group_by: Tag keys to group results by. Optional.
         time_range: Relative time range: '15m', '1h', '4h', '24h', '7d'. Default '1h'.
+            Ignored when start_time and end_time are provided.
+        start_time: Absolute start as ISO 8601 string (e.g. '2026-02-10T00:00:00Z').
+            Use with end_time for calendar-based date ranges.
+        end_time: Absolute end as ISO 8601 string (e.g. '2026-02-11T23:59:59Z').
+            Use with start_time for calendar-based date ranges.
     """
     try:
         query: dict[str, Any] = {
@@ -314,19 +321,30 @@ async def metrics_query(
         if group_by:
             query["group_by"] = group_by
 
+        # Build time_range payload: absolute dates take precedence over relative
+        if start_time and end_time:
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            time_range_payload: dict[str, Any] = {
+                "start": int(start_dt.timestamp()),
+                "end": int(end_dt.timestamp()),
+            }
+        else:
+            time_range_payload = {"relative": time_range}
+
         logger.info(
             "metrics_query_calling",
             dashboard_provider_id=dashboard_provider_id,
             metric_name=metric_name,
             aggregation=aggregation,
             filters=filters,
-            time_range=time_range,
+            time_range=time_range_payload,
         )
 
         result = await _me().query_metrics(
             dashboard_provider_id=dashboard_provider_id,
             queries=[query],
-            time_range={"relative": time_range},
+            time_range=time_range_payload,
         )
 
         logger.info(
@@ -448,6 +466,8 @@ async def logs_search(
     query_terms: list[str] | None = None,
     time_range_minutes: int = 60,
     max_results: int = 50,
+    start_time: str | None = None,
+    end_time: str | None = None,
 ) -> str:
     """Search application logs for errors, exceptions, and patterns.
 
@@ -456,12 +476,23 @@ async def logs_search(
         source: Service/source name filter (auto-wrapped with wildcards). Optional but recommended.
         query_terms: Search terms list (e.g. ['ERROR', 'exception', 'timeout']). Each is quoted.
         time_range_minutes: How many minutes back to search (default 60, max 10080 = 7 days).
+            Ignored when start_time and end_time are provided.
         max_results: Max log entries (default 50, max 200).
+        start_time: Absolute start as ISO 8601 string (e.g. '2026-02-10T00:00:00Z').
+            Use with end_time for calendar-based date ranges. Max span 7 days.
+        end_time: Absolute end as ISO 8601 string (e.g. '2026-02-11T23:59:59Z').
+            Use with start_time for calendar-based date ranges.
     """
     try:
-        now = datetime.now(timezone.utc)
-        from_time = (now - timedelta(minutes=min(time_range_minutes, 10080))).isoformat()
-        to_time = now.isoformat()
+        if start_time and end_time:
+            start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+            from_time = start_dt.isoformat()
+            to_time = end_dt.isoformat()
+        else:
+            now = datetime.now(timezone.utc)
+            from_time = (now - timedelta(minutes=min(time_range_minutes, 10080))).isoformat()
+            to_time = now.isoformat()
 
         result = await _le().search_logs(
             index=index,
@@ -477,7 +508,7 @@ async def logs_search(
         if not data:
             return _safe_json({
                 "total_results": 0,
-                "query": {"index": index, "source": source, "terms": query_terms, "time_range_minutes": time_range_minutes},
+                "query": {"index": index, "source": source, "terms": query_terms, "from_time": from_time, "to_time": to_time},
                 "note": "No logs found matching the query. Try different search terms, broader time range, or check the source name.",
             })
 
@@ -499,7 +530,7 @@ async def logs_search(
         return _safe_json({
             "total_results": len(data),
             "showing": len(entries),
-            "query": {"index": index, "source": source, "terms": query_terms, "time_range_minutes": time_range_minutes},
+            "query": {"index": index, "source": source, "terms": query_terms, "from_time": from_time, "to_time": to_time},
             "logs": entries,
         })
     except Exception as e:
