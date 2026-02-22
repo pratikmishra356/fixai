@@ -97,20 +97,22 @@ Do not search for other dashboards unless the used ones don't have relevant metr
 - Use service name and entry point paths to inform what to search for in metrics and logs.
 
 **3. Gather operational data** (metrics AND logs — they answer different questions):
-- **Metrics**: Use ONLY dashboards from `metrics_get_overview`'s `used_dashboards` list. \
-  Do not call `metrics_search_dashboards` unless the used dashboards lack relevant metrics. \
-  For each used dashboard: (1) Use its `db_id` with `metrics_explore_dashboard` to see \
-  available metrics and template variables, (2) Identify the service filter key (e.g., \
-  `toast_service_name` from template variables), (3) Immediately call `metrics_query` \
-  with that service filter — use the `dashboard_provider_id` (not `db_id`) for queries. \
+- **Metrics**: Start with `used_dashboards` — explore one, check its metrics and query. \
+  If satisfied, use it; if not, try another used dashboard or search for more. \
+  For each used dashboard: (1) Use its `db_id` with `metrics_explore_dashboard` to get \
+  provider, template_variables (name, tag_key) and metrics (metric_name, queries). \
+  (2) Call `metrics_get_variable_values` with template_variables[].name when you need \
+  filter values.   (3) Call `metrics_query` with metric_name and filters — use \
+  `dashboard_provider_id` (not `db_id`). Use tag keys from template_variables and \
+  queries; different metrics may use different tag conventions. \
   Always follow exploration with queries to get actual time-series data. If metric values \
   look suspicious (e.g., very large numbers that don't match expected traffic), check the \
   `recent_datapoints` trend — if values steadily increase, it's likely a cumulative counter \
   and you should report the delta (latest - earliest) or rate, not the raw values.
-- **Logs**: Use the index from `logs_get_overview`'s `used_indexes` (e.g., `prod_g2`). \
-  Call `logs_search_sources` to find the service's log source name, then `logs_search` \
-  with that index and source to query for errors, exceptions, or specific events in the \
-  time range.
+- **Logs**: Start with `used_indexes` from `logs_get_overview` — use one, search and \
+  check. If satisfied, use it; if not, try another used index. Call `logs_search_sources` \
+  with `index_name` from used_indexes to scope the search to that index, then `logs_search` \
+  with that index and source.
 - **Time ranges**: Both `metrics_query` and `logs_search` support relative time ranges \
   (e.g. '1h', '24h') AND absolute calendar date ranges via `start_time`/`end_time` \
   ISO 8601 parameters (e.g. '2026-02-10T00:00:00Z'). When the user asks about a \
@@ -126,7 +128,7 @@ Do not search for other dashboards unless the used ones don't have relevant metr
 **5. Synthesize**: Write your answer when you have sufficient evidence.
 
 **Cross-tool reasoning**: Use each tool's output to decide the next. Metric names and \
-available_filter_keys from explore_dashboard → which metrics_query to run. Log source \
+template_variables from explore_dashboard → which metrics_query to run. Log source \
 names from search_sources → index and source in logs_search. Entry points and paths \
 from code → search terms for logs and metrics. Do not call tools blindly; read the \
 previous results and use them.

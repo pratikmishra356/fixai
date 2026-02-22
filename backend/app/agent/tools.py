@@ -179,12 +179,13 @@ async def metrics_search_dashboards(search: str) -> str:
 async def metrics_explore_dashboard(dashboard_db_id: str, metric_search: str = "") -> str:
     """List metrics and template variables in a dashboard.
 
-    Returns available metrics (with names and query expressions) and template variables
-    (with tag_key for use as filter keys in metrics_query).
+    Returns: provider (e.g. datadog), metrics (metric_name, queries list), template_variables
+    (name, tag_key). Does NOT include variable values — call metrics_get_variable_values
+    with variable names from template_variables when you need filter values.
 
     Args:
         dashboard_db_id: Database UUID of the dashboard (from metrics_get_overview or metrics_search_dashboards).
-        metric_search: Optional wildcard to filter metrics (e.g. 'error*', 'latency').
+        metric_search: Optional wildcard to filter metrics. Empty = all metrics.
     """
     try:
         client = _me()
@@ -212,42 +213,39 @@ async def metrics_explore_dashboard(dashboard_db_id: str, metric_search: str = "
         except Exception:
             var_summary = []
 
-        # Extract actual metric names from the query details
-        enriched_metrics = []
-        for m in metrics[:25]:
-            entry = {
-                "id": m.get("id"),
-                "display_name": m.get("name"),
-                "description": m.get("description"),
-            }
-            # Extract actual datadog metric names from the details
+        # Build minimal response: queries list + template_variables
+        metrics_list = []
+        for m in metrics[:40]:
             details = m.get("details", {})
             requests = details.get("requests", [])
-            actual_metrics = []
+            queries = []
             for req in requests:
                 for q in req.get("queries", []):
                     query_str = q.get("query", "")
                     if query_str:
-                        actual_metrics.append(query_str)
-            if actual_metrics:
-                entry["actual_queries"] = actual_metrics[:3]  # Show first 3 raw queries
-                # Try to extract the metric name from the first query (format: agg:metric_name{...})
-                first_q = actual_metrics[0]
-                if ":" in first_q and "{" in first_q:
-                    metric_part = first_q.split(":", 1)[1].split("{")[0]
-                    entry["metric_name"] = metric_part
-            enriched_metrics.append(entry)
+                        queries.append(query_str)
+            if not queries:
+                continue
+            metric_name = None
+            first_q = queries[0]
+            if ":" in first_q and "{" in first_q:
+                metric_name = first_q.split(":", 1)[1].split("{")[0]
+            metrics_list.append({"metric_name": metric_name or "unknown", "queries": queries})
 
-        # Extract usable filter keys from template variables for easy reference
-        filter_keys = [v["tag_key"] for v in var_summary if v.get("tag_key")]
+        # Minimal template_variables: name, tag_key (for metrics_get_variable_values and filters)
+        template_vars = [
+            {"name": v.get("name"), "tag_key": v.get("tag_key")}
+            for v in var_summary
+            if v.get("name") and v.get("tag_key")
+        ]
 
-        # Put template_variables and filter_keys first so they survive truncation
-        return _safe_json({
-            "template_variables": var_summary,
-            "available_filter_keys": filter_keys or None,
-            "total_metrics": metrics_result.get("total_count", len(metrics)),
-            "metrics": enriched_metrics,
-        })
+        # Provider from first metric (e.g. datadog, grafana)
+        provider = metrics[0].get("provider") if metrics else None
+
+        return _safe_json(
+            {"provider": provider, "metrics": metrics_list, "template_variables": template_vars},
+            max_len=16_000,
+        )
     except Exception as e:
         return _handle_error(e, "Metrics Explorer")
 
@@ -255,30 +253,62 @@ async def metrics_explore_dashboard(dashboard_db_id: str, metric_search: str = "
 @tool
 async def metrics_get_variable_values(
     dashboard_db_id: str,
-    variable_name: str,
-    search: str | None = None,
+    variable_requests: list[dict],
 ) -> str:
-    """Get available values for a dashboard template variable.
+    """Get filter values for one or more template variables in a single call.
 
-    Use this to discover what filter values exist before querying metrics.
+    Call when you need actual values for metrics_query filters. Use name from
+    template_variables (metrics_explore_dashboard). Pass a list of {variable_name,
+    search_string}. If search_string returns no values, returns first 50 values.
 
     Args:
-        dashboard_db_id: Database UUID of the dashboard.
-        variable_name: Variable name (e.g. 'tablename', 'service', 'environment').
-        search: Optional search to narrow high-cardinality variables (e.g. 'prod', 'my-service').
+        dashboard_db_id: Database UUID of the dashboard (from used_dashboards).
+        variable_requests: List of {"variable_name": str, "search_string": str | None}.
+            Use template_variables[].name from metrics_explore_dashboard.
     """
     try:
-        result = await _me().get_variable_values(dashboard_db_id, variable_name, search=search)
-        values = result.get("values", [])
-        return _safe_json({
-            "variable_name": result.get("variable_name"),
-            "tag_key": result.get("tag_key"),
-            "default_value": result.get("default_value"),
-            "total_count": result.get("total_count"),
-            "returned_count": result.get("returned_count", len(values)),
-            "values": values[:50],
-            "_note": f"Showing first 50 of {result.get('total_count', len(values))} values" if len(values) > 50 else None,
-        })
+        client = _me()
+        requests = variable_requests if isinstance(variable_requests, list) else []
+        if isinstance(variable_requests, dict):
+            requests = [variable_requests]
+        results = []
+        for req in requests:
+            if not isinstance(req, dict):
+                continue
+            vname = req.get("variable_name") or req.get("name")
+            search_str = req.get("search_string") or req.get("search")
+            if not vname:
+                continue
+            try:
+                result = await client.get_variable_values(
+                    dashboard_db_id, vname, search=search_str if search_str else None
+                )
+                values = result.get("values", [])
+                total = result.get("total_count", len(values))
+                fallback = False
+                if not values and (search_str or "").strip():
+                    result = await client.get_variable_values(dashboard_db_id, vname, search=None)
+                    values = result.get("values", [])[:50]
+                    total = result.get("total_count", len(result.get("values", [])))
+                    fallback = True
+                else:
+                    values = values[:50]
+                results.append({
+                    "variable_name": result.get("variable_name", vname),
+                    "tag_key": result.get("tag_key"),
+                    "default_value": result.get("default_value"),
+                    "search_used": search_str,
+                    "values": values,
+                    "total_count": total,
+                    "returned_count": len(values),
+                    "fallback_to_first_50": fallback,
+                })
+            except Exception as e:
+                results.append({
+                    "variable_name": vname,
+                    "error": str(e),
+                })
+        return _safe_json({"results": results})
     except Exception as e:
         return _handle_error(e, "Metrics Explorer")
 
@@ -300,9 +330,8 @@ async def metrics_query(
         dashboard_provider_id: Provider dashboard ID (e.g. '4k2-qvg-h38'), NOT the database UUID.
         metric_name: Full metric name from metrics_explore_dashboard.
         aggregation: avg, sum, min, max, count, or last.
-        filters: Tag filters to scope the query. Use the tag_key from the dashboard's
-                 template_variables to filter by service. Without filters, returns
-                 aggregated data across all services.
+        filters: Tag filters. Use tag_key from template_variables; values from
+                 metrics_get_variable_values (use name from template_variables).
         group_by: Tag keys to group results by. Optional.
         time_range: Relative time range: '15m', '1h', '4h', '24h', '7d'. Default '1h'.
             Ignored when start_time and end_time are provided.
@@ -432,17 +461,43 @@ async def logs_get_overview() -> str:
 
 
 @tool
-async def logs_search_sources(search: str, repository_id: str | None = None) -> str:
+async def logs_search_sources(
+    search: str,
+    index_name: str | None = None,
+    repository_id: str | None = None,
+) -> str:
     """Search for log sources (services) by keyword.
 
+    Prefer index_name from used_indexes to scope the search to that index only.
     Space-separated terms = OR search. Supports * wildcard.
 
     Args:
         search: Search pattern (e.g. 'my-service', 'auth*', 'payment gateway').
-        repository_id: Optional index/repo ID to scope the search.
+        index_name: Optional. Index name from used_indexes. Use to scope the search to that
+            index only. If omitted, search runs across all indexes.
+        repository_id: Optional index/repo UUID to scope the search. Use index_name instead
+            when you have index names from logs_get_overview.
     """
     try:
-        result = await _le().search_sources(search, repository_id=repository_id)
+        repo_id: str | None = None
+        if index_name:
+            indexes = await _le().list_indexes()
+            index_list = indexes if isinstance(indexes, list) else indexes.get("indexes", [])
+            matched = next((idx for idx in index_list if isinstance(idx, dict) and idx.get("name") == index_name), None)
+            if matched and matched.get("id"):
+                repo_id = str(matched["id"])
+            else:
+                available = [idx.get("name", "") for idx in index_list if isinstance(idx, dict) and idx.get("name")]
+                return _error_response(
+                    "INDEX_NOT_FOUND",
+                    f"Index '{index_name}' not found. Available indexes: {available}. Use one of these or omit index_name to search all.",
+                    "Logs Explorer",
+                    available_indexes=available,
+                )
+        elif repository_id:
+            repo_id = repository_id
+
+        result = await _le().search_sources(search, repository_id=repo_id)
         # Handle various response shapes
         if isinstance(result, dict):
             matches = result.get("matches", result.get("sources", result.get("data", [])))
