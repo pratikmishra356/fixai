@@ -49,6 +49,16 @@ class ConversationResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AgentStatsResponse(BaseModel):
+    """Agent run stats (AI calls, tool calls, tokens, elapsed time)."""
+    ai_calls: int
+    max_ai_calls: int
+    tool_calls: int
+    elapsed_seconds: float
+    estimated_tokens: int
+    max_tokens: int
+
+
 class ConversationDetailResponse(BaseModel):
     """Conversation with all messages."""
     id: UUID
@@ -57,6 +67,7 @@ class ConversationDetailResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     messages: list[MessageResponse] = []
+    agent_stats: AgentStatsResponse | None = None
 
     model_config = {"from_attributes": True}
 

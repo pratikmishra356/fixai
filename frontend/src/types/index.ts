@@ -54,6 +54,7 @@ export interface ConversationDetail {
   created_at: string;
   updated_at: string;
   messages: Message[];
+  agent_stats?: AgentStats | null;
 }
 
 export interface UserContext {

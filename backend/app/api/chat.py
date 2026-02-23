@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.conversation import Conversation, Message
 from app.models.organization import Organization
 from app.schemas.chat import (
+    AgentStatsResponse,
     ConversationCreate,
     ConversationDetailResponse,
     ConversationResponse,
@@ -219,6 +220,17 @@ async def get_conversation(
 ):
     """Get conversation with all messages."""
     conv = await _get_conversation(db, conversation_id)
+    agent_stats = None
+    if conv.last_agent_stats:
+        s = conv.last_agent_stats
+        agent_stats = AgentStatsResponse(
+            ai_calls=s.get("ai_calls", 0),
+            max_ai_calls=s.get("max_ai_calls", 0),
+            tool_calls=s.get("tool_calls", 0),
+            elapsed_seconds=float(s.get("elapsed_seconds", 0)),
+            estimated_tokens=s.get("estimated_tokens", 0),
+            max_tokens=s.get("max_tokens", 0),
+        )
     return ConversationDetailResponse(
         id=conv.id,
         organization_id=conv.organization_id,
@@ -237,6 +249,7 @@ async def get_conversation(
             )
             for m in conv.messages
         ],
+        agent_stats=agent_stats,
     )
 
 
@@ -367,10 +380,15 @@ async def send_message(
         full_response: str,
         tool_calls_to_save: list[dict],
         tool_responses_to_save: list[dict],
+        last_agent_stats: dict | None = None,
     ):
-        """Persist accumulated messages (tool calls, tool responses, assistant reply)."""
+        """Persist accumulated messages (tool calls, tool responses, assistant reply) and agent stats."""
         from app.database import async_session_factory
         async with async_session_factory() as save_db:
+            conv_to_update = await save_db.get(Conversation, conv.id)
+            if conv_to_update:
+                if last_agent_stats:
+                    conv_to_update.last_agent_stats = last_agent_stats
             for tool_call in tool_calls_to_save:
                 save_db.add(Message(
                     id=_uuid.uuid4(),
@@ -405,6 +423,7 @@ async def send_message(
         full_response = ""
         tool_calls_to_save: list[dict] = []
         tool_responses_to_save: list[dict] = []
+        last_agent_stats: dict | None = None
 
         try:
             async for event_type, data in run_agent(
@@ -452,6 +471,15 @@ async def send_message(
                     yield f"event: tool_end\ndata: {json.dumps({'tool': tool_name, 'result_preview': result_preview, 'result_length': result_length, 'duration_ms': duration_ms})}\n\n"
 
                 elif event_type == "stats":
+                    if data.get("final"):
+                        last_agent_stats = {
+                            "ai_calls": data.get("ai_calls", 0),
+                            "max_ai_calls": data.get("max_ai_calls", 0),
+                            "tool_calls": data.get("tool_calls", 0),
+                            "elapsed_seconds": data.get("elapsed_seconds", 0),
+                            "estimated_tokens": data.get("estimated_tokens", 0),
+                            "max_tokens": data.get("max_tokens", 0),
+                        }
                     yield f"event: stats\ndata: {json.dumps(data)}\n\n"
 
                 elif event_type == "done":
@@ -465,13 +493,13 @@ async def send_message(
                 elif event_type == "error":
                     yield f"event: error\ndata: {json.dumps({'error': data})}\n\n"
 
-            await asyncio.shield(_save_messages(full_response, tool_calls_to_save, tool_responses_to_save))
+            await asyncio.shield(_save_messages(full_response, tool_calls_to_save, tool_responses_to_save, last_agent_stats))
 
         except (asyncio.CancelledError, GeneratorExit):
             logger.info("stream_cancelled", conversation_id=str(conv.id), tokens_collected=len(full_response))
             partial = full_response.strip() or "Investigation stopped before any results were collected."
             try:
-                await asyncio.shield(_save_messages(partial, tool_calls_to_save, tool_responses_to_save))
+                await asyncio.shield(_save_messages(partial, tool_calls_to_save, tool_responses_to_save, last_agent_stats))
             except Exception:
                 logger.error("save_on_cancel_failed", conversation_id=str(conv.id))
 

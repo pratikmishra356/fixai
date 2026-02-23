@@ -574,20 +574,23 @@ async def logs_search(
                 # Keep the raw field if it's the main content, otherwise keep all keys
                 entry = {}
                 for k, v in log_entry.items():
-                    if isinstance(v, str) and len(v) > 500:
-                        entry[k] = v[:500] + "..."
+                    if isinstance(v, str) and len(v) > 300:
+                        entry[k] = v[:300] + "..."
                     else:
                         entry[k] = v
                 entries.append(entry)
             else:
-                entries.append(str(log_entry)[:500])
+                entries.append(str(log_entry)[:300])
 
-        return _safe_json({
-            "total_results": len(data),
-            "showing": len(entries),
-            "query": {"index": index, "source": source, "terms": query_terms, "from_time": from_time, "to_time": to_time},
-            "logs": entries,
-        })
+        return _safe_json(
+            {
+                "total_results": len(data),
+                "showing": len(entries),
+                "query": {"index": index, "source": source, "terms": query_terms, "from_time": from_time, "to_time": to_time},
+                "logs": entries,
+            },
+            max_len=10_000,
+        )
     except Exception as e:
         return _handle_error(e, "Logs Explorer")
 

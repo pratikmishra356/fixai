@@ -28,7 +28,9 @@ export function ChatInterface({
   const [isStreaming, setIsStreaming] = useState(() => initialProgress?.isStreaming ?? false);
   const [streamingContent, setStreamingContent] = useState(() => initialProgress?.streamingContent ?? '');
   const [toolSteps, setToolSteps] = useState<ToolStep[]>(() => initialProgress?.toolSteps ?? []);
-  const [agentStats, setAgentStats] = useState<AgentStats | null>(() => initialProgress?.agentStats ?? null);
+  const [agentStats, setAgentStats] = useState<AgentStats | null>(
+    () => initialProgress?.agentStats ?? conversation.agent_stats ?? null,
+  );
   const [showContext, setShowContext] = useState(false);
   const [context, setContext] = useState<UserContext>({});
   const [error, setError] = useState<string | null>(() => initialProgress?.error ?? null);
@@ -80,12 +82,12 @@ export function ChatInterface({
     pushProgress(currentConvIdRef.current, currentProgressRef.current);
     currentConvIdRef.current = conversation.id;
 
-    // Restore: prefer ref-based accumulator (most up-to-date) then parent snapshot
+    // Restore: prefer ref-based accumulator (most up-to-date) then parent snapshot, then conversation from API
     const saved = streamProgressRef.current[conversation.id] ?? initialProgress;
     setIsStreaming(saved?.isStreaming ?? false);
     setStreamingContent(saved?.streamingContent ?? '');
     setToolSteps(saved?.toolSteps ?? []);
-    setAgentStats(saved?.agentStats ?? null);
+    setAgentStats(saved?.agentStats ?? conversation.agent_stats ?? null);
     setError(saved?.error ?? null);
     setInput('');
     setShowContext(false);
@@ -217,18 +219,14 @@ export function ChatInterface({
             ...updatedConv,
             messages: [...updatedConv.messages, assistantMsg],
           });
-          // Clear progress — response is now in conversation.messages
+          // Clear streaming state but keep agentStats and toolSteps so they persist after answer
           pushProgress(convId, {
             isStreaming: false,
             streamingContent: '',
-            toolSteps: [],
-            agentStats: null,
           });
           if (currentConvIdRef.current === convId) {
             setIsStreaming(false);
             setStreamingContent('');
-            setToolSteps([]);
-            setAgentStats(null);
           }
         },
         onError: (err) => {
@@ -274,7 +272,7 @@ export function ChatInterface({
       );
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-surface">
+    <div className="flex-1 flex flex-col min-h-0 h-full bg-surface">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-3.5 border-b border-surface-border bg-white shadow-card">
         <div>
@@ -330,8 +328,8 @@ export function ChatInterface({
         </div>
       </header>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 max-w-4xl mx-auto w-full">
+      {/* Messages - min-h-0 allows flex child to shrink and scroll properly */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 py-6 max-w-4xl mx-auto w-full">
         {conversation.messages.length === 0 && !isStreaming && (
           <div className="flex items-center justify-center h-full min-h-[200px]">
             <p className="text-gray-500 text-sm">Describe the issue you're investigating</p>

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -25,6 +25,7 @@ class Conversation(Base):
     # older messages and pass summary + last 2 exchanges to the agent
     conversation_summary = Column(Text, nullable=True)
     conversation_summary_message_count = Column(Integer, nullable=True)
+    last_agent_stats = Column(JSONB, nullable=True)  # ai_calls, tool_calls, estimated_tokens, etc.
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

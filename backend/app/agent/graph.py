@@ -38,18 +38,48 @@ TOKEN_ESTIMATION_DIVISOR = settings.agent_token_estimation_divisor
 
 
 def _estimate_tokens(messages: list[BaseMessage]) -> int:
-    """Rough token estimate: total characters / divisor (default 4)."""
+    """Rough token estimate: total characters / divisor.
+    Counts message content, tool_calls (id/name/args), and tool results.
+    Uses ~4 chars/token for English; configurable via agent_token_estimation_divisor.
+    Handles message objects, dicts, and nested lists from stream events.
+    """
     total_chars = 0
-    for m in messages:
-        if isinstance(m.content, str):
-            total_chars += len(m.content)
-        elif isinstance(m.content, list):
-            for block in m.content:
+    if not messages or not isinstance(messages, list):
+        return 0
+
+    def _process_item(item):
+        nonlocal total_chars
+        if isinstance(item, list):
+            for x in item:
+                _process_item(x)
+            return
+        content = None
+        tool_calls = None
+        if hasattr(item, "content"):
+            content = item.content
+            tool_calls = getattr(item, "tool_calls", None)
+        elif isinstance(item, dict):
+            content = item.get("content", item.get("data", {}).get("content") if isinstance(item.get("data"), dict) else None)
+            tool_calls = item.get("tool_calls")
+        else:
+            return
+        if isinstance(content, str):
+            total_chars += len(content)
+        elif isinstance(content, list):
+            for block in content:
                 if isinstance(block, dict):
-                    total_chars += len(str(block.get("text", "")))
+                    total_chars += len(str(block.get("text", block.get("content", ""))))
                 else:
                     total_chars += len(str(block))
-    return total_chars // TOKEN_ESTIMATION_DIVISOR
+        if tool_calls:
+            for tc in tool_calls:
+                args = tc.get("args", tc) if isinstance(tc, dict) else getattr(tc, "args", "")
+                name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+                total_chars += len(str(args)) + len(str(name))
+
+    for m in messages:
+        _process_item(m)
+    return max(0, total_chars // TOKEN_ESTIMATION_DIVISOR)
 
 
 SYSTEM_PROMPT = """\
@@ -431,6 +461,7 @@ async def run_agent(
     ai_call_count = 0
     tool_call_count = 0
     start_time = time.time()
+    last_known_messages: list[BaseMessage] = messages  # Updated from stream for token est
 
     try:
         final_response = ""
@@ -467,13 +498,23 @@ async def run_agent(
             if kind == "on_chat_model_start":
                 ai_call_count += 1
                 elapsed = round(time.time() - start_time, 1)
+                # Use actual input messages (includes tool responses) for token estimation
+                input_data = event_data.get("input", {})
+                if isinstance(input_data, list):
+                    msgs_for_tokens = input_data
+                elif isinstance(input_data, dict) and "messages" in input_data:
+                    msgs_for_tokens = input_data["messages"]
+                else:
+                    msgs_for_tokens = last_known_messages
+                if isinstance(msgs_for_tokens, list) and msgs_for_tokens:
+                    last_known_messages = msgs_for_tokens
 
                 yield ("stats", {
                     "ai_calls": ai_call_count,
                     "max_ai_calls": MAX_AI_CALLS,
                     "tool_calls": tool_call_count,
                     "elapsed_seconds": elapsed,
-                    "estimated_tokens": _estimate_tokens(messages),
+                    "estimated_tokens": _estimate_tokens(last_known_messages),
                     "max_tokens": MAX_INPUT_TOKENS,
                 })
 
@@ -606,13 +647,13 @@ async def run_agent(
 
         elapsed_total = round(time.time() - start_time, 1)
 
-        # Final stats
+        # Final stats (use last known messages from stream for token estimate)
         yield ("stats", {
             "ai_calls": ai_call_count,
             "max_ai_calls": MAX_AI_CALLS,
             "tool_calls": tool_call_count,
             "elapsed_seconds": elapsed_total,
-            "estimated_tokens": _estimate_tokens(messages),
+            "estimated_tokens": _estimate_tokens(last_known_messages),
             "max_tokens": MAX_INPUT_TOKENS,
             "final": True,
         })
