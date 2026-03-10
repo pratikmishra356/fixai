@@ -61,6 +61,7 @@ export interface UserContext {
   service?: string;
   environment?: string;
   file_path?: string;
+  timezone?: string;
 }
 
 // --- Debug / Trace types ---

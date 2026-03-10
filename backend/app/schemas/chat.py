@@ -11,6 +11,7 @@ class UserContext(BaseModel):
     service: str | None = Field(None, description="Service name to investigate")
     environment: str | None = Field(None, description="Environment (prod, staging, etc.)")
     file_path: str | None = Field(None, description="Specific file path to look at")
+    timezone: str | None = Field(None, description="User's IANA timezone (e.g. Asia/Kolkata, America/New_York)")
 
 
 class MessageCreate(BaseModel):

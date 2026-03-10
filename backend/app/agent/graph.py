@@ -135,10 +135,7 @@ Do not search for other dashboards unless the used ones don't have relevant metr
   filter values.   (3) Call `metrics_query` with metric_name and filters — use \
   `dashboard_provider_id` (not `db_id`). Use tag keys from template_variables and \
   queries; different metrics may use different tag conventions. \
-  Always follow exploration with queries to get actual time-series data. If metric values \
-  look suspicious (e.g., very large numbers that don't match expected traffic), check the \
-  `recent_datapoints` trend — if values steadily increase, it's likely a cumulative counter \
-  and you should report the delta (latest - earliest) or rate, not the raw values.
+  Always follow exploration with queries to get actual time-series data.
 - **Logs**: Start with `used_indexes` from `logs_get_overview` — use one, search and \
   check. If satisfied, use it; if not, try another used index. Call `logs_search_sources` \
   with `index_name` from used_indexes to scope the search to that index, then `logs_search` \
@@ -147,6 +144,13 @@ Do not search for other dashboards unless the used ones don't have relevant metr
   (e.g. '1h', '24h') AND absolute calendar date ranges via `start_time`/`end_time` \
   ISO 8601 parameters (e.g. '2026-02-10T00:00:00Z'). When the user asks about a \
   specific date or date range, use absolute times instead of relative.
+- **Timezone handling**: The user's timezone is provided in the context (e.g. \
+  "Asia/Kolkata", "America/New_York"). When the user refers to local times like \
+  "yesterday", "last night", "at 3pm", or "since morning", convert those to UTC \
+  before passing to tool calls. If the user explicitly mentions a different timezone \
+  in their query, use that instead. All `start_time`/`end_time` values in tool calls \
+  must be in UTC (ending with 'Z'). When presenting times back to the user, convert \
+  UTC results to the user's timezone for readability.
 - For error/exception investigations, check both metrics and logs — they capture \
   different failure modes (infrastructure 5xx vs application exceptions).
 
@@ -169,17 +173,10 @@ previous results and use them.
 - Report only what data shows. No data = observability gap, not a problem.
 - Quantify: counts, rates, percentiles. Avoid vague language.
 - Stop when you have enough evidence. Don't pad calls.
-- **Metric interpretation** — CRITICAL: Many metrics are cumulative counters, not per-interval \
-  counts. A metric named `.count` (e.g., `requests.count`) typically represents the total \
-  cumulative count since the service started, NOT requests per 5-minute interval. To detect \
-  this: (1) Check `recent_datapoints` — if values steadily increase (e.g., 277K → 278K → 279K), \
-  it's a cumulative counter, (2) Also check if `min` and `max` are very different but both \
-  large — this indicates a cumulative counter, (3) Calculate the actual count: `max - min` \
-  (or `latest - min`), (4) Report the delta and rate, NOT the raw average. Example: If \
-  avg=295K, min=277K, max=312K, and recent_datapoints show steady increase, report \
-  "~35K requests total over 24h (~0.4 req/sec)" NOT "295K requests per 5-minute interval". \
-  The average of a cumulative counter is meaningless — always report the delta. If unsure, \
-  query with a shorter time range to see if the pattern repeats.
+- **Metric interpretation**: Analyze the returned time-series data — look at trends, \
+  rates of change, and anomalies across datapoints rather than relying on summary \
+  statistics alone. Use the query expression and metric name to understand what is \
+  being measured.
 
 ## Report Format (for broad investigations)
 
@@ -442,6 +439,8 @@ async def run_agent(
             parts.append(f"Environment: {context['environment']}")
         if context.get("file_path"):
             parts.append(f"File path: {context['file_path']}")
+        if context.get("timezone"):
+            parts.append(f"User timezone: {context['timezone']}")
         if parts:
             context_hint = "User provided context:\n" + "\n".join(parts)
             messages.append(SystemMessage(content=context_hint))

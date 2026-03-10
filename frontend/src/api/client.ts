@@ -112,7 +112,9 @@ export interface SendMessageOptions {
 export function sendMessage(opts: SendMessageOptions): { promise: Promise<void>; stop: () => void } {
   const promise = (async () => {
     const body: Record<string, unknown> = { content: opts.content };
-    if (opts.context) body.context = opts.context;
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const context: UserContext = { ...opts.context, timezone: browserTimezone };
+    body.context = context;
 
     const res = await fetch(
       `${BASE}/conversations/${opts.conversationId}/messages`,
